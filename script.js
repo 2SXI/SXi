@@ -400,3 +400,44 @@
   })();
 
 })();
+
+/* ---------- Work page: filters + preview modal ---------- */
+(function(){
+  var grid = document.getElementById('workGrid');
+  var filters = document.querySelectorAll('.work-filter');
+  if (grid && filters.length) {
+    filters.forEach(function(btn){
+      btn.addEventListener('click', function(){
+        var f = btn.getAttribute('data-filter');
+        filters.forEach(function(b){ var on = b === btn; b.classList.toggle('active', on); b.setAttribute('aria-selected', on ? 'true' : 'false'); });
+        grid.querySelectorAll('.work-card').forEach(function(c){
+          var cats = (c.getAttribute('data-cat') || '').split(' ');
+          c.hidden = f === 'all' ? cats.indexOf('concepts') > -1 : cats.indexOf(f) < 0;
+        });
+      });
+    });
+  }
+  var modal = document.getElementById('previewModal');
+  if (!modal || typeof modal.showModal !== 'function') return;
+  var frame = document.getElementById('previewFrame');
+  var title = document.getElementById('previewTitle');
+  var open = document.getElementById('previewOpen');
+  function setDevice(d){
+    modal.classList.toggle('phone', d === 'phone');
+    modal.querySelectorAll('[data-device]').forEach(function(b){ b.classList.toggle('active', b.getAttribute('data-device') === d); });
+  }
+  document.querySelectorAll('[data-preview]').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var url = btn.getAttribute('data-preview');
+      title.textContent = (btn.getAttribute('data-title') || 'Preview') + ' · live demo';
+      open.href = url;
+      frame.src = url + (url.indexOf('?') > -1 ? '&' : '?') + 'embed=1';
+      setDevice('desktop');
+      modal.showModal();
+    });
+  });
+  modal.querySelectorAll('[data-device]').forEach(function(b){ b.addEventListener('click', function(){ setDevice(b.getAttribute('data-device')); }); });
+  document.getElementById('previewClose').addEventListener('click', function(){ modal.close(); });
+  modal.addEventListener('click', function(e){ if (e.target === modal) modal.close(); });
+  modal.addEventListener('close', function(){ frame.src = 'about:blank'; });
+})();
