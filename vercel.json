@@ -159,5 +159,17 @@
         }
       ]
     }
+  ],
+  "redirects": [
+    {
+      "source": "/testimonials.html",
+      "destination": "/#testimonials",
+      "permanent": true
+    },
+    {
+      "source": "/testimonials",
+      "destination": "/#testimonials",
+      "permanent": true
+    }
   ]
 }
