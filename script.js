@@ -17,17 +17,20 @@
   const burger = document.getElementById('burger');
   const menu = document.getElementById('mobile-menu');
   function closeMenu(){
-    burger.classList.remove('open'); menu.classList.remove('open');
+    burger.classList.remove('open'); menu.classList.remove('open'); document.body.classList.remove('menu-open');
     burger.setAttribute('aria-expanded','false');
     document.body.style.overflow = '';
   }
   burger.addEventListener('click', () => {
     const open = burger.classList.toggle('open');
-    menu.classList.toggle('open', open);
+    menu.classList.toggle('open', open); document.body.classList.toggle('menu-open', open);
     burger.setAttribute('aria-expanded', open ? 'true':'false');
+    burger.setAttribute('aria-label', open ? 'Close menu' : 'Open menu');
     document.body.style.overflow = open ? 'hidden' : '';
   });
   menu.querySelectorAll('a').forEach(a => a.addEventListener('click', closeMenu));
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && menu.classList.contains('open')) { closeMenu(); burger.focus(); } });
+  window.addEventListener('resize', () => { if (window.innerWidth > 920) closeMenu(); });
 
   /* Active nav link based on current page */
   (function(){

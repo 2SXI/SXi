@@ -250,3 +250,6 @@ h1{background:linear-gradient(180deg,#fff,#b9c6ea);-webkit-background-clip:text;
 @media (max-width:880px){.search-btn{min-width:0;flex:1}.search-btn .kbd,.search-btn .lbl-d{display:none}.palette{margin-top:6vh}body::before{opacity:.3}}
 .auth-card{background:var(--glass);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);border-color:rgba(255,255,255,.1);box-shadow:var(--glow);position:relative}
 .auth-card::before{content:"";position:absolute;inset:0 0 auto 0;height:1px;background:linear-gradient(90deg,transparent,rgba(122,162,255,.7),transparent)}
+.gauges{display:grid;gap:16px}.gauge .g-top{display:flex;justify-content:space-between;font-size:13.5px;margin-bottom:6px}
+.g-track{height:8px;border-radius:99px;background:rgba(255,255,255,.07);overflow:hidden}.g-fill{height:100%;width:0;border-radius:99px;background:var(--grad);transition:width .9s var(--ease)}
+.g-fill.warm{background:linear-gradient(90deg,#f59e0b,#fbbf24)}.g-fill.hot{background:linear-gradient(90deg,#ef4444,#f87171)}

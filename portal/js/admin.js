@@ -19,6 +19,7 @@ async function loadView(id, arg) {
     case "settings": return (await import("./admin/misc.js")).settings(ctx);
     case "clients": return (await import("./admin/clients.js")).render(ctx, arg);
     case "invoices": return (await import("./admin/billing.js")).invoices(ctx, arg);
+    case "servers": return (await import("./admin/servers.js")).servers(ctx, arg);
     case "renewals": return (await import("./admin/renewals.js")).renewals(ctx);
     case "payments": return (await import("./admin/billing.js")).payments(ctx);
     case "support": return (await import("./admin/support.js")).support(ctx, arg);

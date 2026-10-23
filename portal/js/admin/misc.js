@@ -1,5 +1,6 @@
 import { db, q, html, raw, $, $$, toast, money, fmtDate, fmtDateTime, timeAgo, pill, icon, titleCase, describeActivity, daysUntil } from "../core.js";
-import { lookup, clientName, formDialog, listPage, adminError, bust } from "./kit.js";
+import { lookup, clientName, formDialog, listPage, adminError, bust, callAdminFn } from "./kit.js";
+import { showSecret } from "./clients.js";
 
 export async function overview(ctx) {
   const soon = new Date(Date.now() + 60 * 864e5).toISOString().slice(0, 10);
@@ -61,7 +62,12 @@ export async function team(ctx) {
       { name: "client_id", label: "Client (for client logins)", type: "select", options: clients.map((c) => [c.id, c.company_name]) }, { name: "is_active", label: "Account active", type: "checkbox" }],
     onSave: async (v) => { await q(db.rpc("admin_update_profile", { p_user_id: u.id, p_role: v.role, p_client_id: v.role === "client" ? v.client_id : null, p_is_active: v.is_active })); bust(); toast("Saved.", "ok"); ctx.reload(); },
   });
-  const page = listPage({
+  const invite = () => formDialog({ title: "Add team member", submitText: "Create", row: { role: "staff", mode: "invite" },
+    fields: [{ name: "full_name", label: "Name", max: 200 }, { name: "email", label: "Email", required: true, lower: true },
+      { name: "role", label: "Role", type: "select", required: true, options: [["staff", "Staff"], ["admin", "Admin"]] },
+      { name: "mode", label: "Access", type: "select", required: true, options: [["invite", "Email an invite link"], ["password", "Make a temporary password"]] }],
+    onSave: async (v) => { const r = await callAdminFn({ action: "create_login", ...v }); if (r.temp_password) showSecret("Temporary password", `Give this to ${v.email}. Shown once.`, r.temp_password); else toast("Invite sent.", "ok"); bust(); ctx.reload(); } });
+  const page = listPage({ onAdd: invite, addLabel: "Add team member",
     title: "Team & logins", sub: "Everyone who can sign in. Create new logins in Supabase → Authentication, then set their role here.", rows, onOpen: edit,
     statuses: ["client", "staff", "admin"], statusOf: (r) => r.role, searchText: (r) => `${r.email} ${r.full_name}`, emptyIcon: "team",
     cols: [{ label: "Person", cell: (r) => html`<strong>${r.full_name || r.email}</strong><div class="meta">${r.email}</div>` }, { label: "Client", cell: (r) => (r.client_id ? clientName(clients, r.client_id) : "—"), hideM: true },

@@ -1,5 +1,5 @@
-import { db, q, html, raw, $, $$, toast, money, fmtDate, timeAgo, pill, icon, confirmDialog, titleCase } from "../core.js";
-import { lookup, bust, formDialog, listPage, adminError } from "./kit.js";
+import { db, q, html, raw, $, $$, openDialog, toast, money, fmtDate, timeAgo, pill, icon, confirmDialog, titleCase } from "../core.js";
+import { lookup, bust, formDialog, listPage, adminError, callAdminFn } from "./kit.js";
 
 const FIELDS = [
   { name: "company_name", label: "Company", required: true, max: 200 }, { name: "contact_name", label: "Contact person", max: 200 },
@@ -46,9 +46,10 @@ async function detail(ctx, id) {
     <div class="grid cols-2">
       <div class="card"><div class="card-head"><h2>Contact</h2></div><dl class="kv"><dt>Contact</dt><dd>${c.contact_name || "—"}</dd><dt>Email</dt><dd>${c.email || "—"}</dd><dt>Phone</dt><dd>${c.phone || "—"}</dd><dt>Address</dt><dd>${c.address || "—"}</dd></dl></div>
       <div class="card"><div class="card-head"><h2>Logins</h2></div>
-        ${users.length ? html`<div class="list">${users.map((u) => html`<div class="item"><div class="item-main"><div class="title">${u.full_name || u.email}</div><div class="meta">${u.email}</div></div>${u.is_active ? "" : pill("account", "suspended")}</div>`)}</div>` : html`<p class="faint">No login linked yet.</p>`}
-        <form class="form mt-l" data-link novalidate><div class="field"><label for="link-email">Link a login by email</label>
-          <input class="input" id="link-email" type="email" placeholder="them@company.co.zw" autocomplete="off"><span class="hint">Create the user first in Supabase → Authentication → Users, then link it here.</span></div>
+        ${users.length ? html`<div class="list">${users.map((u) => html`<div class="item"><div class="item-main"><div class="title">${u.full_name || u.email}</div><div class="meta">${u.email}</div></div><button class="btn btn-ghost btn-sm" type="button" data-reset="${u.id}">Reset link</button>${u.is_active ? "" : pill("account", "suspended")}</div>`)}</div>` : html`<p class="faint">No login linked yet.</p>`}
+        <div class="row mt-l"><button class="btn btn-primary" type="button" data-create>${icon("plus")}Create login</button></div>
+        <form class="form mt-l" data-link novalidate><div class="field"><label for="link-email">Or link an existing login by email</label>
+          <input class="input" id="link-email" type="email" placeholder="them@company.co.zw" autocomplete="off"></div>
           <div class="row"><button class="btn btn-ghost" type="submit">Link login</button></div></form></div>
       ${section("Services", services, () => "#/services", (s) => html`<div class="title">${s.name}</div>`)}
       ${section("Domains", domains, () => "#/domains", (d) => html`<div class="title">${d.name}</div><div class="meta">Expires ${fmtDate(d.expires_at)}</div>`)}
@@ -65,6 +66,13 @@ async function detail(ctx, id) {
     $("[data-edit]", view).onclick = () => formDialog({ title: "Edit client", fields: FIELDS, row: c, onSave: async (v) => { await q(db.from("clients").update(v).eq("id", id)); bust(); toast("Saved.", "ok"); ctx.reload(); } });
     $("[data-note]", view).addEventListener("submit", async (e) => { e.preventDefault(); const body = $("#cnote", view).value.trim(); if (!body) return;
       try { await q(db.from("internal_notes").insert({ entity_type: "client", entity_id: id, client_id: id, body, author_id: ctx.profile.id })); toast("Note added.", "ok"); ctx.reload(); } catch (err) { toast(adminError(err), "error"); } });
+    $("[data-create]", view).onclick = () => formDialog({ title: "Create client login", submitText: "Create", row: { full_name: c.contact_name, email: c.email, mode: "invite" },
+      fields: [{ name: "full_name", label: "Name", max: 200 }, { name: "email", label: "Email", required: true, lower: true },
+        { name: "mode", label: "How do they get access?", type: "select", required: true, options: [["invite", "Email an invite link"], ["password", "Make a temporary password"]] }],
+      onSave: async (v) => { const r = await callAdminFn({ action: "create_login", client_id: id, ...v });
+        if (r.temp_password) showSecret("Temporary password", `Give this to ${v.email}. It is shown only once; they should change it after signing in.`, r.temp_password); else toast("Invite sent to " + v.email + ".", "ok");
+        bust(); ctx.reload(); } });
+    $$("[data-reset]", view).forEach((b) => b.addEventListener("click", async () => { try { const r = await callAdminFn({ action: "reset_link", user_id: b.dataset.reset }); showSecret("Password reset link", `Send this to ${r.email} (WhatsApp or email). It works once.`, r.link); } catch (e) { toast(adminError(e), "error"); } }));
     $("[data-invoice]", view).onclick = () => ctx.newInvoice(id);
     $("[data-link]", view).addEventListener("submit", async (e) => {
       e.preventDefault(); const em = $("#link-email", view).value.trim(); if (!em) return toast("Enter the login's email.", "error");
@@ -72,4 +80,11 @@ async function detail(ctx, id) {
     });
   };
   return { title: c.company_name, html: out, mount };
+}
+
+/** Shows a one-time secret (temporary password / reset link) with a copy button. */
+export function showSecret(title, note, value) {
+  const d = openDialog(html`<div class="dlg"><h2>${title}</h2><p class="dim">${note}</p><textarea class="input mono" readonly rows="3" aria-label="${title}">${value}</textarea>
+    <div class="actions"><button class="btn btn-ghost" data-close type="button">Done</button><button class="btn btn-primary" data-copy type="button">Copy</button></div></div>`);
+  $("[data-copy]", d).addEventListener("click", async () => { try { await navigator.clipboard.writeText(value); toast("Copied.", "ok"); } catch { $("textarea", d).select(); toast("Press Ctrl+C to copy.", "ok"); } });
 }

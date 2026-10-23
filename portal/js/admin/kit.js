@@ -148,3 +148,16 @@ export function listPage({ csvName: cn, title, sub, rows, cols, searchText, stat
   };
   return { html: head, mount };
 }
+
+/** Calls the admin-users Edge Function with the signed-in staff member's session. */
+export async function callAdminFn(body) {
+  const { data, error } = await db.functions.invoke("admin-users", { body });
+  if (error) {
+    let msg = error.message;
+    try { const j = await error.context.json(); msg = j.error || msg; } catch { /* keep default */ }
+    if (/not found|404|failed to send|fetch/i.test(String(msg))) msg = "The login service isn't set up yet. Deploy the admin-users function (see README → Login service).";
+    throw new Error(msg);
+  }
+  if (data?.error) throw new Error(data.error);
+  return data;
+}

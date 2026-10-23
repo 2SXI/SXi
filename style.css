@@ -819,3 +819,38 @@
 .preview-modal.phone .pm-stage{padding:18px 0;}
 .preview-modal.phone .pm-stage iframe{width:390px; max-width:100%; border-radius:22px; border:6px solid #2a2d38;}
 @media (max-width:640px){ .pm-devices{display:none;} .preview-modal{width:100vw; height:100vh; border-radius:0; max-height:100dvh;} }
+
+/* ---------- Mobile menu v2: header stays on top (so the close button is reachable), touch-sized rows ---------- */
+header{z-index:1100;}
+.mobile-menu{
+  z-index:1050; height:100vh; height:100dvh; overscroll-behavior:contain; -webkit-overflow-scrolling:touch;
+  justify-content:flex-start; align-items:stretch;
+  padding:calc(76px + env(safe-area-inset-top,0px) + 8px) 20px calc(28px + env(safe-area-inset-bottom,0px));
+  background:radial-gradient(120% 60% at 50% 0%, rgba(36,81,245,.16), transparent 60%), rgba(6,7,10,.985);
+}
+.mobile-menu a:not(.btn){
+  display:flex; align-items:center; justify-content:space-between; min-height:56px; padding:0 4px;
+  font-size:20px; font-weight:600; border-bottom:1px solid var(--line);
+}
+.mobile-menu a:not(.btn)::after{content:"›"; color:var(--text-faint); font-size:22px; font-weight:400;}
+.mobile-menu a.active{color:var(--blue-light);}
+.mobile-menu .mm-login{color:var(--blue-light); border-bottom:0 !important;}
+.mobile-menu .mm-cta{
+  display:flex; align-items:center; justify-content:center; width:100%; min-height:54px;
+  margin-top:20px; padding:0 24px; font-size:16px; font-weight:600; flex-shrink:0;
+}
+@media (max-height:700px){
+  .mobile-menu a:not(.btn){min-height:48px; font-size:18px;}
+  .mobile-menu .mm-cta{margin-top:14px; min-height:50px; font-size:15px; padding:0 24px;}
+}
+@media (max-width:920px){ .nav-login{padding:10px 6px;} }
+
+/* Small-screen safety net: nothing may push the page sideways; media and tables stay inside the screen */
+html,body{max-width:100%; overflow-x:hidden;}
+img,video,svg,iframe{max-width:100%;}
+@media (max-width:480px){
+  .wrap{padding-left:18px; padding-right:18px;}
+  .footer-top{gap:28px;}
+}
+
+body.menu-open .nav-login{opacity:0; pointer-events:none;}

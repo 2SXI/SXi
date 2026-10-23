@@ -53,6 +53,8 @@ const R = {
     title: "Hosting", sub: "Hosting accounts and their limits. Usage is entered by hand until a control panel is connected.", table: "hosting_accounts", kind: "hosting", status: ["pending", "active", "suspended", "terminated"],
     fields: (c, x) => [clientField(c), { name: "plan_name", label: "Plan" },
       { name: "server_label", label: "Server shown to client", hint: "A friendly label, not the real server name" },
+      { name: "server_id", label: "Runs on server", type: "select", options: x.servers.map((v) => [v.id, v.name]) },
+      { name: "panel_username", label: "Folder / username on server", lower: true, placeholder: "arikho", hint: "Matches the folder under /home. The SXI Agent then keeps storage usage up to date automatically." },
       { name: "status", label: "Status", type: "select", required: true, options: sel(["pending", "active", "suspended", "terminated"]), default: "pending" },
       { name: "ssl_status", label: "SSL", type: "select", required: true, options: sel(["none", "pending", "active", "expired"]), default: "none" },
       { name: "storage_used_mb", label: "Storage used (GB)", type: "mb", default: "0" }, { name: "storage_limit_mb", label: "Storage limit (GB)", type: "mb" },
@@ -98,7 +100,7 @@ export async function render(ctx, id) {
     lookup("clients"), lookup("hosting"), lookup("domains"),
     q(db.from(cfg.table).select("*").order("created_at", { ascending: false }).limit(500)),
   ]);
-  const x = { hosting, domains };
+  const x = { hosting, domains, servers: id === "hosting" ? await lookup("servers") : [] };
   const refresh = () => { bust(); ctx.reload(); };
   const edit = (row) => formDialog({
     title: row ? `Edit ${cfg.title.toLowerCase().replace(/s$/, "")}` : `Add ${cfg.title.toLowerCase().replace(/s$/, "")}`,
