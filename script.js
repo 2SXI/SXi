@@ -29,6 +29,7 @@
     document.body.style.overflow = open ? 'hidden' : '';
   });
   menu.querySelectorAll('a').forEach(a => a.addEventListener('click', closeMenu));
+  document.addEventListener('click', e => { if (menu.classList.contains('open') && !menu.contains(e.target) && !e.target.closest('header')) closeMenu(); });
   document.addEventListener('keydown', e => { if (e.key === 'Escape' && menu.classList.contains('open')) { closeMenu(); burger.focus(); } });
   window.addEventListener('resize', () => { if (window.innerWidth > 920) closeMenu(); });
 
