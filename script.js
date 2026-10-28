@@ -194,6 +194,7 @@
     if(!canvas) return;
     const ctx = canvas.getContext('2d');
     const anchor = document.querySelector('.hero-orb-wrap');
+    const LITE = window.matchMedia('(pointer:coarse)').matches || window.innerWidth < 820;   // phones/tablets: lighter galaxy
     const rnd = Math.random, TAU = Math.PI*2, clamp = (v,a,b) => Math.max(a, Math.min(b, v));
     const gauss = () => (rnd()+rnd()+rnd()-1.5)/1.5;
     let w=0, h=0, dpr=1, R=300, ax=0, ay=0, nodes=[], dust=[], pulses=[], born=[], rings=[];
@@ -228,18 +229,18 @@
       o.th = rnd()*TAU; o.tp = (rnd()-.5)*2; o.ox = o.oy = 0;
     }
     function make(){
-      const n = clamp(Math.round(w*h/14000), 44, 100);
+      const n = LITE ? clamp(Math.round(w*h/16000), 30, 48) : clamp(Math.round(w*h/14000), 44, 100);
       nodes = Array.from({length:n}, (_, i) => {
         const o = { i, f:1, b:1, vr:.5 + rnd()*1, sz:1.3 + rnd()*1.7, w:rnd()<.3, glow:0, mv:rnd()<.35, ox:0, oy:0, x:0, y:0, z:0, px:0, py:0, sc:1, k:[] };
         seed(o, true); return o;
       });
-      dust = Array.from({length:n*2}, () => { const o = { f:1, b:1, vr:.4 + rnd()*.8, x:0, y:0, z:0, px:0, py:0, sc:1 }; seed(o, true); return o; });
+      dust = Array.from({length:LITE ? n*3 : n*2}, () => { const o = { f:1, b:1, vr:.4 + rnd()*.8, x:0, y:0, z:0, px:0, py:0, sc:1 }; seed(o, true); return o; });
       pulses = []; born = []; rings = [];
     }
     let lastW = 0;
     function resize(){
       if(nodes.length && window.innerWidth === w && Math.abs(window.innerHeight - h) < 160 && window.innerHeight <= h) return;
-      dpr = Math.min(window.devicePixelRatio||1, 2);
+      dpr = LITE ? 1 : Math.min(window.devicePixelRatio||1, 2);
       w = window.innerWidth; h = window.innerHeight;
       canvas.width = w*dpr; canvas.height = h*dpr;
       canvas.style.width = w+'px'; canvas.style.height = h+'px';
@@ -322,7 +323,7 @@
       });
 
       // links by 3D proximity
-      const LD = R*.26, LD2 = LD*LD;
+      const LD = R*(LITE ? .3 : .26), LD2 = LD*LD;
       for(let i=0;i<nodes.length;i++){
         const a = nodes[i];
         for(let j=i+1;j<nodes.length;j++){
@@ -398,7 +399,22 @@
     resize();
     if(!reduceMotion){
       let last = performance.now(), T = 0;
-      const loop = now => { const dt = Math.min(.05, (now-last)/1000); last = now; T += dt; draw(T, dt); requestAnimationFrame(loop); };
+      let lastScroll = 0, lastDraw = 0, running = true;
+      if(LITE) window.addEventListener('scroll', () => { lastScroll = performance.now(); }, {passive:true});
+      document.addEventListener('visibilitychange', () => { running = !document.hidden; last = performance.now(); });
+      let covered = false;                                       // opaque footer fills the screen: nothing of the galaxy is visible
+      const ftr = document.querySelector('footer');
+      if(ftr && 'IntersectionObserver' in window) new IntersectionObserver(es => { covered = es[0].isIntersecting; }, {rootMargin:'0px 0px -99% 0px'}).observe(ftr);
+      const loop = now => {
+        requestAnimationFrame(loop);
+        if(!running || covered){ last = now; return; }        // tab hidden or footer covering the canvas: stop drawing
+        if(LITE){
+          if(now - lastScroll < 140){ last = now; return; }     // phone is scrolling: keep the last frame, don't repaint under the header
+          if(now - lastDraw < 33) return;                       // ~30fps is plenty on a phone
+          lastDraw = now;
+        }
+        const dt = Math.min(.05, (now-last)/1000); last = now; T += dt; draw(T, dt);
+      };
       requestAnimationFrame(loop);
     }
   })();

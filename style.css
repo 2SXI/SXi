@@ -874,3 +874,19 @@ body::after{
 body.menu-open::after{opacity:1; visibility:visible; pointer-events:auto; transition:opacity 260ms var(--ease);}
 @media (min-width:561px){ .mobile-menu{left:auto; width:380px; right:24px;} }
 @media (max-height:700px){ .mobile-menu a:not(.btn){min-height:46px; font-size:17px;} .mobile-menu .mm-cta{min-height:48px;} }
+
+/* ---------- Mobile performance: the blurred header + overlays sit on top of the animated galaxy canvas,
+   forcing the phone to re-blur and re-blend the whole screen every frame (this is what made scrolling freeze) ---------- */
+@media (max-width:920px), (pointer:coarse){
+  header{background:rgba(6,7,10,.94); -webkit-backdrop-filter:none; backdrop-filter:none;}
+  .grain{display:none;}
+  body::after, .mobile-menu{-webkit-backdrop-filter:none; backdrop-filter:none;}
+  #neuralBg{will-change:auto;}
+  .cta-section::after{animation:none;}          /* big drifting glow right above the footer */
+  .hero h1 .accent{animation:none;}                      /* background-position animation = repaint every frame */
+  .btn{will-change:auto;}
+}
+
+/* The footer was not positioned, so the full-screen galaxy canvas (position:fixed, touch-action:none) painted ON TOP of it:
+   touches on the footer landed on the canvas, which blocks scrolling and swallows taps = the "freeze" at the bottom. */
+footer{position:relative; z-index:1;}
