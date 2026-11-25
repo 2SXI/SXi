@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Payment · SXI Digital</title>
+<meta name="robots" content="noindex,nofollow">
+<meta name="referrer" content="no-referrer">
+<meta name="theme-color" content="#06070a">
+<link rel="icon" href="../favicon-32x32.png">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../portal/portal.css">
+</head>
+<body>
+<main class="auth-wrap">
+  <div class="auth-card">
+    <div class="brand"><img src="../logo-sm.png" alt="" width="30" height="30"><span>SXI Digital</span></div>
+    <h1 id="title">Checking your payment…</h1>
+    <p class="sub" id="sub">This only takes a moment. Please don't close this page.</p>
+    <div id="msg" aria-live="polite"></div>
+    <p class="auth-foot"><a class="link" id="back" href="./#/invoices">Back to my invoices</a></p>
+  </div>
+</main>
+<script src="../portal/js/vendor/supabase.js"></script>
+<script type="module" src="../portal/js/pay-return.js"></script>
+</body>
+</html>

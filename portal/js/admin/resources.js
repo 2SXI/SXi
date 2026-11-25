@@ -7,10 +7,19 @@ const CUR = [["USD", "USD"], ["ZWG", "ZWG"]];
 const clientField = (clients) => ({ name: "client_id", label: "Client", type: "select", required: true, options: clientOptions(clients) });
 const cell = (v) => (v == null || v === "" ? html`<span class="faint">—</span>` : v);
 
+// SXI's standard plans. Picking one pre-fills the service form; the price stays editable.
+const PLANS = {
+  "hosting-monthly": { type: "hosting", name: "SXI Hosting & Website Care (monthly)", price_cents: "15.00", currency: "USD", billing_cycle: "monthly" },
+  "hosting-yearly":  { type: "hosting", name: "SXI Hosting & Website Care (yearly)",  price_cents: "120.00", currency: "USD", billing_cycle: "yearly" },
+  "build-quote":     { type: "website", name: "Website build (per quotation)", price_cents: "0.00", currency: "USD", billing_cycle: "one_time" },
+};
+const PLAN_OPTIONS = [["hosting-monthly", "Hosting & Website Care · US$15 / month"], ["hosting-yearly", "Hosting & Website Care · US$120 / year"], ["build-quote", "One-off build · per quotation"]];
+
 const R = {
   services: {
     title: "Services", sub: "What each client has bought from you.", table: "services", kind: "service", status: ["pending", "active", "suspended", "cancelled", "expired"],
     fields: (c) => [clientField(c),
+      { name: "plan", label: "Standard plan (optional)", type: "select", options: PLAN_OPTIONS, fill: PLANS, hint: "Pre-fills the fields below. For a build, enter the quoted price." },
       { name: "type", label: "Type", type: "select", required: true, options: sel(["website", "domain", "hosting", "business_email", "care_plan", "other"]) },
       { name: "name", label: "Name", required: true, max: 200 },
       { name: "status", label: "Status", type: "select", required: true, options: sel(["pending", "active", "suspended", "cancelled", "expired"]), default: "pending" },
@@ -22,6 +31,7 @@ const R = {
       { label: "Client", cell: (r) => clientName(c, r.client_id), hideM: true }, { label: "Price", cell: (r) => `${money(r.price_cents, r.currency)} / ${titleCase(r.billing_cycle).toLowerCase()}`, hideM: true },
       { label: "Renews", cell: (r) => fmtDate(r.renewal_date), hideM: true }, { label: "Status", cell: (r) => pill("service", r.status) }],
     search: (r, c) => `${r.name} ${r.type} ${clientName(c, r.client_id)}`,
+    preSave: (v) => { delete v.plan; },
   },
   websites: {
     title: "Websites", sub: "Sites you build and host.", table: "websites", kind: "website", status: ["building", "live", "maintenance", "offline", "suspended"],

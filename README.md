@@ -3,7 +3,7 @@
 One folder you can host anywhere that serves static files. No Node server, no build step.
 
 ```
-site/        ← upload this to your web root
+(repo root)  ← upload this folder's contents to your web root
   index.html, services.html, …      existing marketing site (phone numbers fixed, "Client Login" added)
   login.html, reset-password.html   sign in / reset password
   dashboard/                        client dashboard   →  yourdomain.com/dashboard/
@@ -31,13 +31,13 @@ The browser talks directly to Supabase, so **the database is the security bounda
 
 1. **Supabase project.** Authentication → disable *Allow new users to sign up* (SXI creates client accounts). Set minimum password length to 10+. Under *URL Configuration* set the Site URL to your domain and add `https://YOURDOMAIN/reset-password.html` to the redirect URLs (needed for password-reset emails).
 2. **Database.** In the SQL editor run, in order: `supabase/migrations/0001_schema.sql`, `0002_security.sql`, `0003_client_helpers.sql`, `0004_admin_helpers.sql`. Optional: run `supabase/seed_demo.sql` for a demo client with sample data.
-3. **Connect the site.** Edit `site/portal/js/config.js`: your project URL + anon key (Project Settings → API). Optionally set `WEBMAIL_URL`.
+3. **Connect the site.** Edit `portal/js/config.js`: your project URL + anon key (Project Settings → API). Optionally set `WEBMAIL_URL`.
 4. **First admin.** Authentication → Add user, then in the SQL editor:
    ```sql
    update public.profiles set role = 'admin' where email = 'you@sxidigital.com';
    ```
 5. **First client.** Create their login in Supabase → Authentication → Users (tick *Auto confirm*). Then sign in to `/admin/`, open **Clients → Add client**, and on the client's page use **Link a login by email**. Add their domains, hosting, websites, mailboxes and invoices from the other admin screens. Tell the client to use *Forgot password?* on the login page to set their own password.
-6. **Deploy** the contents of `site/` to your host. Netlify / Cloudflare Pages read `_headers`; Vercel reads `vercel.json`; on Nginx/Apache add the same headers for `/login.html`, `/reset-password.html`, `/dashboard/*`, `/admin/*`.
+6. **Deploy** the repo root (everything except `supabase/` and `tests/`) to your host. Netlify / Cloudflare Pages read `_headers`; Vercel reads `vercel.json`; on Nginx/Apache add the same headers for `/login.html`, `/reset-password.html`, `/dashboard/*`, `/admin/*`.
 7. **Daily job** (overdue invoices + renewal reminders), in the SQL editor:
    ```sql
    select cron.schedule('sxi-daily', '0 4 * * *', 'select public.run_daily_maintenance()');
@@ -71,3 +71,20 @@ The browser tests use a *mock* of the Supabase API, so the first thing to verify
 - [x] 1 Inspection · [x] 2 Database + auth + roles · [x] 3 Client dashboard
 - [x] 4 Admin dashboard + client management · [x] 5 Websites/domains/hosting admin · [x] 6 Invoices & payments UI
 - [x] 7 Support (admin side) · [ ] 8 Provider abstractions (hosting, email, payments) · [ ] 9 Security review · [ ] 10 Polish
+
+## Online payments (Linkwa)
+Clients press **Pay online** on an invoice → `create-checkout` (Edge Function) makes a single-use Linkwa link for the invoice's remaining balance → Linkwa's hosted checkout (cards + mobile money) → Linkwa returns the client to `/dashboard/pay-return.html` → `verify-payment` asks Linkwa server-to-server and settles in the database. **Landing on the return page never marks anything paid**; only a confirmed Linkwa status whose amount, currency and link match does.
+
+1. Run `supabase/migrations/0005_online_payments.sql`.
+2. Create a Linkwa app (Developer or Growth plan). Set secrets, **server-side only**:
+   `supabase secrets set LINKWA_API_KEY=... LINKWA_BASE_URL=... SITE_URL=https://yourdomain`
+   (`LINKWA_BASE_URL` is `https://linkwa.co.zw/api/v1/third-party` for a Developer key or `.../integrations` for an Integration key; use the sandbox host while testing: `https://sandbox.linkwa.co.zw/api/v1/third-party` (or `/integrations`) — live is `https://linkwa.co.zw/...`. Register your domain with Linkwa so the return URL is accepted.)
+3. `supabase functions deploy create-checkout verify-payment`
+4. Test in the sandbox with Linkwa's test numbers/cards (success, insufficient funds, cancelled, expired, declined card) before switching the key.
+
+**Webhook (Growth plan).** In your Linkwa dashboard add the endpoint `https://<project-ref>.supabase.co/functions/v1/linkwa-webhook` and copy its signing secret. Then:
+`supabase secrets set LINKWA_WEBHOOK_SECRET=...` and `supabase functions deploy linkwa-webhook --no-verify-jwt` (no JWT, because Linkwa isn't a signed-in user; the HMAC signature is the authentication). Every `payment.completed` event is verified, matched to our own link, amount- and currency-checked, and settled idempotently, so the return page and the webhook can both fire safely. Without the Growth plan the return-page check and manual *Admin → Payments* still work, but a client who pays and never comes back is not picked up automatically.
+
+Still not built: a scheduled reconcile. Paying an invoice (online or marked paid by staff) renews each recurring service on it exactly once, by one billing cycle from its current renewal date (or from today if that date has passed). One-off and cancelled services are never touched. This is intentional; if you'd rather renew by hand, drop the `invoice_paid_renew` trigger from `0005`.
+
+The return page works with or without Linkwa's `short_url` / `payment_reference` parameters: with them it verifies with Linkwa immediately, without them it shows the database status and the webhook settles the payment.

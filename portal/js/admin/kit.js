@@ -87,6 +87,11 @@ export function formDialog({ title, fields, row = null, submitText = "Save", onS
       <button class="btn btn-ghost" data-close type="button">Cancel</button>
       <button class="btn btn-primary" type="submit">${submitText}</button></div></form>`, { sheet: matchMedia("(max-width:880px)").matches });
   const form = $("form", d), err = $("#dlg-err", d);
+  // A field with `fill: { optionValue: { otherField: value } }` pre-fills the other fields when chosen.
+  fields.filter((f) => f.fill).forEach((f) => {
+    const el = form.elements[f.name];
+    el?.addEventListener("change", () => Object.entries(f.fill[el.value] || {}).forEach(([k, v]) => { if (form.elements[k]) form.elements[k].value = v; }));
+  });
   const show = (t) => { err.innerHTML = t ? html`<p class="alert" role="alert">${t}</p>`.s : ""; };
   form.addEventListener("submit", async (e) => {
     e.preventDefault();

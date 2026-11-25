@@ -490,6 +490,131 @@ begin
   perform t.check('refunded status is recorded', (select status = 'refunded' from public.payments where id = t.id('payPend')));
 end $$;
 
+
+-- ---------------------------------------------------------------------
+-- Online payments (0005): gateway settlement, idempotency, renewals
+-- ---------------------------------------------------------------------
+do $$
+declare v jsonb; v_p1 uuid; v_p2 uuid; v_p3 uuid; v_old date;
+begin
+  perform t.as_root();
+  insert into public.services (id, client_id, type, name, status, price_cents, billing_cycle, renewal_date)
+    values (t.mk('svcHost'), t.id('cA'), 'hosting', 'SXI Hosting', 'active', 12000, 'yearly', current_date + 10);
+  insert into public.invoices (id, client_id, due_date) values (t.mk('iLw'), t.id('cA'), current_date + 14);
+  insert into public.invoice_items (invoice_id, service_id, description, unit_price_cents)
+    values (t.id('iLw'), t.id('svcHost'), 'SXI Hosting - 1 year', 12000);
+
+  perform t.as_service();
+  perform t.throws('a draft invoice cannot start a gateway checkout', format($q$select public.begin_linkwa_payment(%L)$q$, t.id('iLw')), 'not payable');
+  perform t.as_root();
+  update public.invoices set status = 'sent' where id = t.id('iLw');
+
+  -- only the service role may touch gateway state
+  perform t.as_user('ua');
+  perform t.throws('clients cannot begin a gateway payment', format($q$select public.begin_linkwa_payment(%L)$q$, t.id('iLw')), 'permission denied');
+  perform t.throws('clients cannot settle a payment', format($q$select public.settle_provider_payment(%L,'R1',12000,'USD')$q$, gen_random_uuid()), 'permission denied');
+  perform t.throws('clients cannot fail a payment', format($q$select public.fail_provider_payment(%L,'FAILED')$q$, gen_random_uuid()), 'permission denied');
+  perform t.as_user('staff');
+  perform t.throws('staff cannot settle a payment through the gateway function', format($q$select public.settle_provider_payment(%L,'R1',12000,'USD')$q$, gen_random_uuid()), 'permission denied');
+  perform t.as_anon();
+  perform t.throws('anon cannot settle a payment', format($q$select public.settle_provider_payment(%L,'R1',12000,'USD')$q$, gen_random_uuid()), 'permission denied');
+
+  -- checkout creation
+  perform t.as_service();
+  v := public.begin_linkwa_payment(t.id('iLw'));
+  v_p1 := (v->>'payment_id')::uuid;
+  perform t.check('checkout is for the full remaining balance', (v->>'amount_cents')::bigint = 12000 and v->>'currency' = 'USD' and v->>'checkout_url' is null);
+  v := public.begin_linkwa_payment(t.id('iLw'));
+  v_p2 := (v->>'payment_id')::uuid;
+  perform t.check('a checkout that never got a link is superseded', v_p2 <> v_p1);
+  perform t.as_root();
+  perform t.check('the superseded payment is marked failed', (select status = 'failed' and failure_reason = 'superseded' from public.payments where id = v_p1));
+  perform t.check('only one open Linkwa payment per invoice', t.n(format($q$select 1 from public.payments where invoice_id=%L and provider='linkwa' and status='pending'$q$, t.id('iLw'))) = 1);
+
+  perform t.as_service();
+  perform t.throws('checkout url must be https', format($q$select public.attach_linkwa_link(%L,'http://x.test/pay/abc','LNK1','abc')$q$, v_p2), 'https');
+  perform public.attach_linkwa_link(v_p2, 'https://linkwa.test/pay/abc', 'LNK1', 'abc');
+  perform t.throws('a payment cannot get a second link', format($q$select public.attach_linkwa_link(%L,'https://linkwa.test/pay/zzz','LNK2','zzz')$q$, v_p2), 'already has a link');
+  v := public.begin_linkwa_payment(t.id('iLw'));
+  perform t.check('an open checkout with a link is reused', (v->>'payment_id')::uuid = v_p2 and v->>'checkout_url' = 'https://linkwa.test/pay/abc');
+
+  -- verification: amount and currency must match what we asked for
+  perform t.check('amount mismatch is not settled', public.settle_provider_payment(v_p2, 'REF-1', 11999, 'USD', 'PAID') = 'mismatch');
+  perform t.check('currency mismatch is not settled', public.settle_provider_payment(v_p2, 'REF-1', 12000, 'ZWG', 'PAID') = 'mismatch');
+  perform t.as_root();
+  perform t.check('a mismatch leaves payment pending and invoice unpaid',
+    (select p.status = 'pending' and i.status = 'sent' from public.payments p join public.invoices i on i.id = p.invoice_id where p.id = v_p2));
+  select renewal_date into v_old from public.services where id = t.id('svcHost');
+
+  -- settlement
+  perform t.as_service();
+  perform t.check('matching payment settles', public.settle_provider_payment(v_p2, 'REF-1', 12000, 'USD', 'PAID') = 'paid');
+  perform t.check('settling again is idempotent', public.settle_provider_payment(v_p2, 'REF-1', 12000, 'USD', 'PAID') = 'already_paid');
+  perform t.throws('a settled payment cannot take a different reference', format($q$select public.settle_provider_payment(%L,'REF-OTHER',12000,'USD','PAID')$q$, v_p2), 'different reference');
+  perform t.as_root();
+  perform t.check('payment is paid, verified and has the gateway reference',
+    (select status = 'paid' and verified_at is not null and provider_reference = 'REF-1' from public.payments where id = v_p2));
+  perform t.check('the invoice became paid through the payment trigger', (select status = 'paid' and paid_at is not null from public.invoices where id = t.id('iLw')));
+  perform t.check('exactly one paid payment exists for the invoice', t.n(format($q$select 1 from public.payments where invoice_id=%L and status='paid'$q$, t.id('iLw'))) = 1);
+  perform t.check('the paid yearly service renewed by one year', (select renewal_date = v_old + interval '1 year' from public.services where id = t.id('svcHost')));
+
+  -- the same gateway reference can never settle a second payment
+  insert into public.invoices (id, client_id, due_date) values (t.mk('iLw2'), t.id('cA'), current_date + 14);
+  insert into public.invoice_items (invoice_id, description, unit_price_cents) values (t.id('iLw2'), 'Second', 5000);
+  update public.invoices set status = 'sent' where id = t.id('iLw2');
+  perform t.as_service();
+  v := public.begin_linkwa_payment(t.id('iLw2')); v_p3 := (v->>'payment_id')::uuid;
+  perform public.attach_linkwa_link(v_p3, 'https://linkwa.test/pay/def', 'LNK3', 'def');
+  perform t.throws('a gateway reference cannot be reused for another payment', format($q$select public.settle_provider_payment(%L,'REF-1',5000,'USD','PAID')$q$, v_p3), 'duplicate key');
+  perform t.as_root();
+  perform t.check('the second invoice stays unpaid after the duplicate attempt', (select status = 'sent' from public.invoices where id = t.id('iLw2')));
+
+  -- failed / cancelled, then a retry
+  perform t.as_service();
+  perform t.check('a cancelled gateway payment is recorded as failed', public.fail_provider_payment(v_p3, 'CANCELLED') = 'failed');
+  perform t.as_root();
+  perform t.check('failure keeps the reason and leaves the invoice payable', (select p.status = 'failed' and p.failure_reason = 'CANCELLED' and i.status = 'sent' from public.payments p join public.invoices i on i.id = p.invoice_id where p.id = v_p3));
+  perform t.as_service();
+  v := public.begin_linkwa_payment(t.id('iLw2'));
+  perform t.check('a retry opens a fresh payment', (v->>'payment_id')::uuid <> v_p3);
+  perform public.attach_linkwa_link((v->>'payment_id')::uuid, 'https://linkwa.test/pay/ghi', 'LNK4', 'ghi');
+  perform t.check('the old link can still settle (failed -> paid) if the customer paid it after all', public.settle_provider_payment(v_p3, 'REF-2', 5000, 'USD', 'PAID') = 'paid');
+  perform t.as_root();
+  perform t.check('the other open checkout for that invoice is retired',
+    (select status = 'failed' and failure_reason = 'invoice_paid_elsewhere' from public.payments where id = (v->>'payment_id')::uuid));
+  perform t.check('a failing payment cannot downgrade a paid one', (select public.fail_provider_payment(v_p3, 'FAILED')) = 'paid') ;
+end $$;
+
+do $$
+declare v jsonb; v_p uuid;
+begin
+  perform t.as_root();
+  -- a manual payment recorded while a gateway checkout is open must not allow double payment
+  insert into public.invoices (id, client_id, due_date) values (t.mk('iLw3'), t.id('cA'), current_date + 14);
+  insert into public.invoice_items (invoice_id, description, unit_price_cents) values (t.id('iLw3'), 'Third', 3000);
+  update public.invoices set status = 'sent' where id = t.id('iLw3');
+  perform t.as_service();
+  v := public.begin_linkwa_payment(t.id('iLw3')); v_p := (v->>'payment_id')::uuid;
+  perform public.attach_linkwa_link(v_p, 'https://linkwa.test/pay/jkl', 'LNK5', 'jkl');
+  perform t.as_user('staff');
+  perform public.mark_invoice_paid(t.id('iLw3'), 'cash', 'CASH-1');
+  perform t.as_service();
+  perform t.throws('gateway cannot pay an invoice that was already paid another way', format($q$select public.settle_provider_payment(%L,'REF-3',3000,'USD','PAID')$q$, v_p), 'exceed');
+  perform t.throws('a paid invoice cannot start another checkout', format($q$select public.begin_linkwa_payment(%L)$q$, t.id('iLw3')), 'not payable');
+
+  -- event log
+  perform t.check('first event is new', public.record_payment_event('linkwa', 'k1', 'status_check', '{"a":1}', null, v_p) = true);
+  perform t.check('same event again is a duplicate', public.record_payment_event('linkwa', 'k1', 'status_check', '{"a":1}', null, v_p) = false);
+  perform t.as_user('ua');
+  perform t.check('clients cannot read payment events', t.n('select 1 from public.payment_events') = 0);
+  perform t.throws('clients cannot write payment events', $q$insert into public.payment_events (provider, idempotency_key, event_type) values ('x','y','z')$q$, 'permission denied');
+  perform t.as_user('staff');
+  perform t.check('staff (non-admin) cannot read payment events', t.n('select 1 from public.payment_events') = 0);
+  perform t.as_user('admin');
+  perform t.check('admins can read payment events', t.n('select 1 from public.payment_events') = 1);
+  perform t.as_root();
+end $$;
+
 -- ---------------------------------------------------------------------
 -- Result
 -- ---------------------------------------------------------------------

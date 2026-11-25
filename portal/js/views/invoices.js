@@ -1,7 +1,7 @@
-import { html, q, pill, money, fmtDate, emptyState, icon, $, $$ } from "../core.js";
+import { html, q, pill, money, fmtDate, emptyState, icon, $, $$, toast } from "../core.js";
 import { requestDialog } from "./_shared.js";
 
-const METHODS = { ecocash: "EcoCash", paynow: "Paynow", paypal: "PayPal", bank_transfer: "Bank transfer", cash: "Cash", card: "Card" };
+const METHODS = { online: "Online payment", ecocash: "EcoCash", paynow: "Paynow", paypal: "PayPal", bank_transfer: "Bank transfer", cash: "Cash", card: "Card" };
 const COLS = "id,number,status,currency,subtotal_cents,total_cents,issue_date,due_date,sent_at,paid_at,notes";
 
 export async function render(ctx, id) {
@@ -17,11 +17,23 @@ export async function render(ctx, id) {
     const paid = payments.filter((p) => p.status === "paid").reduce((s, p) => s + Number(p.amount_cents), 0);
     const mount = (root) => {
       $("[data-print]", root).addEventListener("click", () => window.print());
+      $("[data-pay]", root)?.addEventListener("click", async (e) => {
+        const b = e.currentTarget; b.disabled = true; b.textContent = "Opening checkout…";
+        try {
+          // The amount is decided on the server from the invoice; the browser only says which invoice.
+          const { data, error } = await db.functions.invoke("create-checkout", { body: { invoice_id: inv.id } });
+          if (error || !/^https:\/\//.test(data?.checkout_url || "")) throw error || new Error("No checkout URL");
+          location.assign(data.checkout_url);
+        } catch {
+          b.disabled = false; b.textContent = "Pay online";
+          toast("We couldn't start the payment. Please try again, or contact SXI Digital.", "error");
+        }
+      });
       $("[data-ask]", root)?.addEventListener("click", () => requestDialog(ctx, { title: `Question about ${inv.number}`, label: "How can we help?", subject: `Invoice ${inv.number}`, category: "billing", relatedType: "invoice", relatedId: inv.id }));
     };
     return { title: inv.number, mount, html: html`<div class="stack">
       <div class="no-print"><a class="back" href="#/invoices">${icon("back")} Invoices</a>
-        <div class="page-head"><h1>${inv.number}</h1><div class="row"><button class="btn btn-ghost btn-sm" data-print type="button">${icon("print")} Print / Save PDF</button>
+        <div class="page-head"><h1>${inv.number}</h1><div class="row">${["sent", "overdue"].includes(inv.status) ? html`<button class="btn btn-primary btn-sm" data-pay type="button">Pay online</button>` : ""}<button class="btn btn-ghost btn-sm" data-print type="button">${icon("print")} Print / Save PDF</button>
           <button class="btn btn-primary btn-sm" data-ask type="button">Ask about this invoice</button></div></div></div>
       <section class="card">
         <div class="inv-head"><div><div class="brand"><img src="../logo.png" alt="" width="30" height="30"><span>SXI Digital</span></div>
@@ -37,7 +49,7 @@ export async function render(ctx, id) {
         ${inv.notes ? html`<p class="dim mt-l">${inv.notes}</p>` : ""}
       </section>
       ${payments.length ? html`<section class="card no-print"><div class="card-head"><h2>Payments</h2></div><div class="list">${payments.map((p) => html`<div class="item"><div class="item-main"><div class="title">${money(p.amount_cents, p.currency)}</div><div class="meta">${METHODS[p.method] || (p.method ? p.method[0].toUpperCase() + p.method.slice(1).replace(/_/g, " ") : "Payment")}${p.paid_at ? ` · ${fmtDate(p.paid_at.slice(0, 10))}` : ""}</div></div><span class="pill ${p.status === "paid" ? "ok" : p.status === "failed" ? "danger" : ""}">${p.status[0].toUpperCase() + p.status.slice(1)}</span></div>`)}</div></section>` : ""}
-      ${["sent", "overdue"].includes(inv.status) ? html`<p class="alert info no-print">To pay this invoice, contact SXI Digital and we'll arrange it with you. Online payment will appear here once it's available.</p>` : ""}</div>` };
+      ${["sent", "overdue"].includes(inv.status) ? html`<p class="alert info no-print">${payments.some((p) => p.status === "pending") ? "A payment is in progress. If you've already paid, it will show here shortly." : "Pay securely online by card or mobile money, or contact SXI Digital to arrange another way."}</p>` : ""}</div>` };
   }
 
   const list = await q(db.from("invoices").select(COLS).order("issue_date", { ascending: false }));
