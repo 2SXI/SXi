@@ -9,11 +9,24 @@ const cell = (v) => (v == null || v === "" ? html`<span class="faint">—</span>
 
 // SXI's standard plans. Picking one pre-fills the service form; the price stays editable.
 const PLANS = {
-  "hosting-monthly": { type: "hosting", name: "SXI Hosting & Website Care (monthly)", price_cents: "15.00", currency: "USD", billing_cycle: "monthly" },
-  "hosting-yearly":  { type: "hosting", name: "SXI Hosting & Website Care (yearly)",  price_cents: "120.00", currency: "USD", billing_cycle: "yearly" },
+  "hosting-monthly": { type: "hosting", name: "SXI Website Hosting & Care (monthly)", price_cents: "15.00", currency: "USD", billing_cycle: "monthly" },
+  "hosting-yearly":  { type: "hosting", name: "SXI Website Hosting & Care (yearly)",  price_cents: "120.00", currency: "USD", billing_cycle: "yearly" },
+  "email-starter-monthly":      { type: "business_email", name: "SXI Business Email, Starter, 3 mailboxes (monthly)",       price_cents: "5.00",   currency: "USD", billing_cycle: "monthly" },
+  "email-starter-yearly":       { type: "business_email", name: "SXI Business Email, Starter, 3 mailboxes (yearly)",        price_cents: "50.00",  currency: "USD", billing_cycle: "yearly" },
+  "email-business-monthly":     { type: "business_email", name: "SXI Business Email, Business, 5 mailboxes (monthly)",      price_cents: "8.00",   currency: "USD", billing_cycle: "monthly" },
+  "email-business-yearly":      { type: "business_email", name: "SXI Business Email, Business, 5 mailboxes (yearly)",       price_cents: "80.00",  currency: "USD", billing_cycle: "yearly" },
+  "email-professional-monthly": { type: "business_email", name: "SXI Business Email, Professional, 20 mailboxes (monthly)", price_cents: "25.00",  currency: "USD", billing_cycle: "monthly" },
+  "email-professional-yearly":  { type: "business_email", name: "SXI Business Email, Professional, 20 mailboxes (yearly)",  price_cents: "250.00", currency: "USD", billing_cycle: "yearly" },
   "build-quote":     { type: "website", name: "Website build (per quotation)", price_cents: "0.00", currency: "USD", billing_cycle: "one_time" },
 };
-const PLAN_OPTIONS = [["hosting-monthly", "Hosting & Website Care · US$15 / month"], ["hosting-yearly", "Hosting & Website Care · US$120 / year"], ["build-quote", "One-off build · per quotation"]];
+// A website + email combination is simply two services (hosting + email), so it needs no preset of its own.
+const PLAN_OPTIONS = [
+  ["hosting-monthly", "Website Hosting & Care · US$15 / month"], ["hosting-yearly", "Website Hosting & Care · US$120 / year"],
+  ["email-starter-monthly", "Email Starter (3 mailboxes) · US$5 / month"], ["email-starter-yearly", "Email Starter (3 mailboxes) · US$50 / year"],
+  ["email-business-monthly", "Email Business (5 mailboxes) · US$8 / month"], ["email-business-yearly", "Email Business (5 mailboxes) · US$80 / year"],
+  ["email-professional-monthly", "Email Professional (20 mailboxes) · US$25 / month"], ["email-professional-yearly", "Email Professional (20 mailboxes) · US$250 / year"],
+  ["build-quote", "One-off build · per quotation"],
+];
 
 const R = {
   services: {
