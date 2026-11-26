@@ -37,7 +37,7 @@ export async function render(ctx, id) {
           <button class="btn btn-primary btn-sm" data-ask type="button">Ask about this invoice</button></div></div></div>
       <section class="card">
         <div class="inv-head"><div><div class="brand"><img src="../logo.png" alt="" width="30" height="30"><span>SXI Digital</span></div>
-            <p class="dim mt">hello@sxidigital.com · +263 78 105 3299</p></div>
+            <p class="dim mt">sxidigital.sol@gmail.com · +263 78 105 3299</p></div>
           <div class="inv-meta"><div class="big">Invoice ${inv.number}</div>${pill("invoice", inv.status)}
             <p class="dim mt">Issued ${fmtDate(inv.issue_date)}<br>Due ${fmtDate(inv.due_date)}</p></div></div>
         <div class="mb"><h3>Billed to</h3><p>${client.company_name}</p>${client.contact_name ? html`<p class="dim">${client.contact_name}</p>` : ""}${client.address ? html`<p class="dim">${client.address}</p>` : ""}</div>

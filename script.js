@@ -176,10 +176,31 @@
   const form = document.getElementById('contactForm');
   const success = document.getElementById('formSuccess');
   if(form && success){
-    form.addEventListener('submit', (e) => {
+    const msg = document.getElementById('formMsg');
+    const btn = form.querySelector('button[type="submit"]');
+    const OK = "Thanks \u2014 your message has been sent. We'll be in touch shortly.";
+    const FAIL = "Sorry, that didn't send. Please message us on WhatsApp or email sxidigital.sol@gmail.com.";
+    form.addEventListener('submit', async (e) => {
       e.preventDefault();
+      if(btn) btn.disabled = true;
+      success.classList.remove('show','err');
+      try{
+        const d = Object.fromEntries(new FormData(form));
+        const res = await fetch('https://formsubmit.co/ajax/sxidigital.sol@gmail.com', {
+          method:'POST',
+          headers:{'Content-Type':'application/json','Accept':'application/json'},
+          body: JSON.stringify({ ...d, _subject:'New enquiry from ' + (d.name || 'the website') + ' \u2014 ' + (d.need || 'SXI Digital'), _template:'table', _captcha:'false' })
+        });
+        const out = await res.json().catch(() => ({}));
+        if(!res.ok || String(out.success) === 'false') throw new Error('send failed');
+        if(msg) msg.textContent = OK;
+        form.reset();
+      }catch(_){
+        if(msg) msg.textContent = FAIL;
+        success.classList.add('err');
+      }
       success.classList.add('show');
-      form.reset();
+      if(btn) btn.disabled = false;
     });
   }
 

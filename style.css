@@ -667,6 +667,8 @@
     border:1px solid rgba(36,81,245,0.35); background:rgba(36,81,245,0.08); font-size:14px; margin-top:16px;
   }
   .form-success.show{display:flex;}
+  .form-success.err{ border-color:rgba(255,255,255,0.16); background:rgba(255,255,255,0.04); }
+  .form-success.err svg{ stroke:var(--silver-dim); }
   .form-success svg{width:16px;height:16px; stroke:var(--blue-light); flex-shrink:0;}
 
   /* ---------- Footer ---------- */
@@ -890,3 +892,40 @@ body.menu-open::after{opacity:1; visibility:visible; pointer-events:auto; transi
 /* The footer was not positioned, so the full-screen galaxy canvas (position:fixed, touch-action:none) painted ON TOP of it:
    touches on the footer landed on the canvas, which blocks scrolling and swallows taps = the "freeze" at the bottom. */
 footer{position:relative; z-index:1;}
+
+  /* ---------- Hosting & email plans (services page) ---------- */
+  .plans-block{ margin-top:56px; }
+  .section-head + .plans-block{ margin-top:0; }
+  .plans-label{
+    font-family:'IBM Plex Mono',monospace; font-size:10.5px; letter-spacing:0.08em; text-transform:uppercase;
+    color:var(--blue-light); margin-bottom:14px; display:block;
+  }
+  .plans-grid{
+    display:grid; grid-template-columns:repeat(3, 1fr); gap:1px;
+    background:var(--line); border:1px solid var(--line); border-radius:var(--radius-m); overflow:hidden;
+    box-shadow:0 30px 60px -30px rgba(0,0,0,0.6);
+  }
+  .plans-grid.one{ grid-template-columns:1fr; }
+  .plan-card{
+    background:var(--bg-elevated); padding:32px 28px; display:flex; flex-direction:column; align-items:flex-start;
+    transition:background 260ms var(--ease);
+  }
+  .plan-card:hover{ background:linear-gradient(160deg, #111726, #0d1220); }
+  .plan-card h3{ font-size:17.5px; font-weight:700; margin-bottom:8px; letter-spacing:-0.012em; }
+  .plan-meta{ font-size:14.5px; color:var(--text-dim); line-height:1.6; }
+  .plan-price{ margin:20px 0 4px; font-size:2rem; font-weight:700; letter-spacing:-0.025em; line-height:1.1; }
+  .plan-price small{ font-size:14px; font-weight:500; color:var(--text-dim); letter-spacing:0; }
+  .plan-annual{ font-size:13.5px; color:var(--text-dim); margin-bottom:24px; }
+  .plan-card .btn{ margin-top:auto; }
+  .plan-card.wide{ display:grid; grid-template-columns:1fr 1.2fr; gap:48px; align-items:start; }
+  .plan-card.wide .service-more{ margin-top:0; padding-top:0; border-top:none; }
+  .plans-features{ margin-top:24px; }
+  .plans-features ul{ display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:8px 28px; list-style:none; }
+  .plans-note{ font-size:13.5px; color:var(--text-dim); line-height:1.6; margin-top:16px; }
+  .plans-note a{ color:var(--blue-light); font-weight:600; }
+  @media (max-width:900px){
+    .plans-grid{ grid-template-columns:1fr; }
+    .plan-card.wide{ grid-template-columns:1fr; gap:28px; }
+  }
+  @media (max-width:900px){ .plans-features ul{ grid-template-columns:repeat(2, minmax(0,1fr)); } }
+  @media (max-width:520px){ .plans-features ul{ grid-template-columns:1fr; } }
