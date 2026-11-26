@@ -4,8 +4,10 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 const SITE_URL = (Deno.env.get("SITE_URL") ?? "").replace(/\/+$/, "");
 
 export const cors = {
-  "Access-Control-Allow-Origin": SITE_URL || "null",
-  "Access-Control-Allow-Headers": "authorization, apikey, content-type, x-client-info",
+  // These endpoints authenticate with a Bearer token (never cookies), so CORS is not the security boundary;
+  // "*" also keeps www / preview addresses working. SITE_URL is still required for return/redirect links.
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, apikey, content-type, x-client-info, x-supabase-api-version, x-region, accept, accept-profile, content-profile, prefer",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
   "Vary": "Origin",
 };

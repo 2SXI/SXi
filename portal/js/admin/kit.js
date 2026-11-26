@@ -159,8 +159,8 @@ export async function callAdminFn(body) {
   const { data, error } = await db.functions.invoke("admin-users", { body });
   if (error) {
     let msg = error.message;
-    try { const j = await error.context.json(); msg = j.error || msg; } catch { /* keep default */ }
-    if (/not found|404|failed to send|fetch/i.test(String(msg))) msg = "The login service isn't set up yet. Deploy the admin-users function (see README → Login service).";
+    try { const j = await error.context.json(); msg = j.error || j.message || msg; } catch { /* keep default */ }
+    if (/requested function was not found|failed to send|failed to fetch|networkerror/i.test(String(msg))) msg = "The login service isn't set up yet. Deploy the admin-users function (see README → Login service).";
     throw new Error(msg);
   }
   if (data?.error) throw new Error(data.error);

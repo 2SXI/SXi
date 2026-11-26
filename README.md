@@ -88,3 +88,7 @@ Clients press **Pay online** on an invoice → `create-checkout` (Edge Function)
 Still not built: a scheduled reconcile. Paying an invoice (online or marked paid by staff) renews each recurring service on it exactly once, by one billing cycle from its current renewal date (or from today if that date has passed). One-off and cancelled services are never touched. This is intentional; if you'd rather renew by hand, drop the `invoice_paid_renew` trigger from `0005`.
 
 The return page works with or without Linkwa's `short_url` / `payment_reference` parameters: with them it verifies with Linkwa immediately, without them it shows the database status and the webhook settles the payment.
+
+
+## Login service (admin-users)
+The admin screens' **Create client login**, **Add team member** and **password reset link** buttons call the `admin-users` Edge Function, because creating a login needs the service-role key (never in browser code). Deploy it with `supabase functions deploy admin-users` (or paste `paste-into-supabase/admin-users.ts` into the dashboard; keep *Verify JWT* **on**). It needs the secret `SITE_URL` and checks the caller is an active staff member or admin; only admins can create team logins. *Invite* emails use Supabase's mailer (set up custom SMTP under Authentication for anything beyond a few emails per hour); *temporary password* needs no email at all.
