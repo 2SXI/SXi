@@ -18,11 +18,34 @@ export async function newInvoice(ctx, clientId = null) {
   });
 }
 
+/** Renewal-invoice automation: lead time, auto-send, and a "generate now" button. */
+async function renewalInvoices(ctx) {
+  const rows = await q(db.from("settings").select("key,value").in("key", ["billing.invoice_lead_days", "billing.auto_send"]));
+  const get = (k, d) => rows.find((r) => r.key === k)?.value ?? d;
+  formDialog({
+    title: "Renewal invoices", submitText: "Save",
+    row: { lead: Number(get("billing.invoice_lead_days", 14)), send: get("billing.auto_send", false) === true, now: true },
+    fields: [
+      { name: "lead", label: "Create the invoice this many days before renewal", type: "number", required: true, hint: "Each active recurring service is invoiced once per renewal. The daily job runs this automatically." },
+      { name: "send", label: "Send generated invoices to clients automatically (otherwise they stay as drafts for you to review)", type: "checkbox" },
+      { name: "now", label: "Generate any due invoices now", type: "checkbox" }],
+    onSave: async (v) => {
+      if (!(v.lead >= 0 && v.lead <= 90)) throw new Error("Days before renewal must be between 0 and 90.");
+      await q(db.from("settings").upsert([{ key: "billing.invoice_lead_days", value: v.lead }, { key: "billing.auto_send", value: !!v.send }]));
+      if (v.now) {
+        const r = await q(db.rpc("admin_generate_renewal_invoices"));
+        toast(r.renewal_invoices_created ? `${r.renewal_invoices_created} invoice(s) created (${r.renewal_lines} line(s)).` : "Settings saved. Nothing is due for invoicing yet.", "ok");
+      } else toast("Settings saved.", "ok");
+      bust(); ctx.reload();
+    },
+  });
+}
+
 export async function invoices(ctx, id) {
   if (id) return invoiceDetail(ctx, id);
   const [clients, rows] = await Promise.all([lookup("clients"), q(db.from("invoices").select("*").order("created_at", { ascending: false }).limit(500))]);
   const page = listPage({
-    title: "Invoices", sub: "Draft, send and track what clients owe.", rows, addLabel: "New invoice", onAdd: () => newInvoice(ctx), onOpen: (r) => ctx.go("#/invoices/" + r.id),
+    title: "Invoices", sub: "Draft, send and track what clients owe.", rows, addLabel: "New invoice", onAdd: () => newInvoice(ctx), headExtra: [{ label: "Renewal invoices", onClick: () => renewalInvoices(ctx) }], onOpen: (r) => ctx.go("#/invoices/" + r.id),
     statuses: ["draft", "sent", "overdue", "paid", "cancelled"], statusOf: (r) => r.status, searchText: (r) => `${r.number} ${clientName(clients, r.client_id)}`, emptyIcon: "invoices",
     cols: [{ label: "Invoice", cell: (r) => html`<strong>${r.number}</strong><div class="meta">${clientName(clients, r.client_id)}</div>` },
       { label: "Due", cell: (r) => fmtDate(r.due_date), hideM: true }, { label: "Total", num: true, cell: (r) => money(r.total_cents, r.currency) },

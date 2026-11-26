@@ -17,6 +17,8 @@ def new_context(browser, mock, authed=True, mobile=False, configured=True):
     if configured:
         ctx.route("**/portal/js/config.js", lambda r, _: r.fulfill(status=200, content_type="application/javascript", body=CONFIG_JS))
         ctx.route("https://test.supabase.co/**", lambda r, req: mock.handle(r, req))
+    if not configured:
+        ctx.route("**/portal/js/config.js", lambda r, _: r.fulfill(status=200, content_type="application/javascript", body=CONFIG_JS.replace("https://test.supabase.co", "https://YOUR-PROJECT.supabase.co").replace('"anon"', '"YOUR-ANON-KEY"')))
     ctx.route(re.compile(r"https://fonts\.(googleapis|gstatic)\.com/.*"), lambda r, _: r.abort())
     if authed:
         ctx.add_init_script("localStorage.setItem('sb-test-auth-token', JSON.stringify(%s))" % json.dumps(mock.session()))

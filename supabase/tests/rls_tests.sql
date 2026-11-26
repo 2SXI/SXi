@@ -337,7 +337,7 @@ do $$
 begin
   perform t.as_user('admin');
   perform t.check('admin can create servers',     t.affected($q$insert into public.servers (name, provider) values ('sxi-vps-02','cpanel')$q$) = 1);
-  perform t.check('admin can read/write settings', t.affected($q$update public.settings set value='{"name":"SXI"}'$q$) = 1);
+  perform t.check('admin can read/write settings', t.affected($q$update public.settings set value='{"name":"SXI"}' where key='company'$q$) = 1);
   perform public.admin_update_profile(t.id('uloose'), 'staff', null, true);
   perform t.check('admin can promote a user to staff (and is detached from the client)', (select role = 'staff' and client_id is null from public.profiles where id = t.id('uloose')));
   perform t.throws('staff cannot belong to a client', format('select public.admin_update_profile(%L,%L,%L)', t.id('staff'), 'staff', t.id('cA')), 'do not belong to a client');
@@ -612,6 +612,143 @@ begin
   perform t.check('staff (non-admin) cannot read payment events', t.n('select 1 from public.payment_events') = 0);
   perform t.as_user('admin');
   perform t.check('admins can read payment events', t.n('select 1 from public.payment_events') = 1);
+  perform t.as_root();
+end $$;
+
+-- ---------------------------------------------------------------------
+-- 0006: recurring invoices, hosting sync, mailbox limits
+-- ---------------------------------------------------------------------
+do $$
+declare r jsonb; v_inv uuid; v_n int; v_h uuid; v_h2 uuid; v_s_host uuid; v_s_mail uuid; v_s_far uuid; v_s_one uuid; v_s_off uuid; v_s_zwg uuid;
+begin
+  perform t.as_root();
+  insert into public.clients (id, company_name, status) values (t.mk('cE'), 'Recurring Co', 'active'), (t.mk('cF'), 'Other Co', 'active');
+  insert into public.hosting_accounts (id, client_id, plan_name, status, renewal_date, email_accounts_limit)
+    values (t.mk('hE'), t.id('cE'), 'Starter', 'active', current_date + 5, 2);
+  insert into public.hosting_accounts (id, client_id, plan_name, status) values (t.mk('hF'), t.id('cF'), 'Other', 'active');
+  v_h := t.id('hE');
+
+  insert into public.services (id, client_id, type, name, status, price_cents, billing_cycle, renewal_date, hosting_account_id)
+    values (t.mk('sHost'), t.id('cE'), 'hosting', 'Starter hosting', 'active', 12000, 'yearly', current_date + 5, v_h);
+  insert into public.services (id, client_id, type, name, status, price_cents, billing_cycle, renewal_date)
+    values (t.mk('sMail'), t.id('cE'), 'business_email', 'Business email', 'active', 3000, 'monthly', current_date + 10),
+           (t.mk('sFar'),  t.id('cE'), 'care_plan', 'Care plan', 'active', 5000, 'quarterly', current_date + 90),
+           (t.mk('sOne'),  t.id('cE'), 'website', 'One-off build', 'active', 90000, 'one_time', current_date + 3),
+           (t.mk('sZwg'),  t.id('cE'), 'other', 'ZWG service', 'active', 100000, 'monthly', current_date + 2);
+  update public.services set currency = 'ZWG' where id = t.id('sZwg');
+  insert into public.services (id, client_id, type, name, status, price_cents, billing_cycle, renewal_date, auto_invoice)
+    values (t.mk('sOff'), t.id('cE'), 'other', 'Manual only', 'active', 2000, 'monthly', current_date + 1, false);
+  insert into public.services (client_id, type, name, status, price_cents, billing_cycle, renewal_date)
+    values (t.id('cE'), 'other', 'Cancelled svc', 'cancelled', 2000, 'monthly', current_date + 1),
+           (t.id('cE'), 'other', 'Free svc', 'active', 0, 'monthly', current_date + 1);
+
+  -- sync: the service's renewal date is on the hosting account straight away
+  perform t.check('linking a service copies its renewal date to the hosting account',
+    (select renewal_date from public.hosting_accounts where id = v_h) = current_date + 5);
+  perform t.throws('a non-hosting service cannot link to a hosting account',
+    format($q$update public.services set hosting_account_id = %L where id = %L$q$, v_h, t.id('sMail')), 'hosting service');
+  perform t.throws('a service cannot link to another client''s hosting account',
+    format($q$update public.services set hosting_account_id = %L where id = %L$q$, t.id('hF'), t.id('sHost')), 'different client');
+
+  -- who may call it
+  perform t.as_user('ua');
+  perform t.throws('clients cannot generate invoices', 'select public.admin_generate_renewal_invoices()', 'Not allowed');
+  perform t.as_user('staff');
+  perform t.throws('staff (non-admin) cannot generate invoices', 'select public.admin_generate_renewal_invoices()', 'Not allowed');
+  perform t.as_anon();
+  perform t.throws('anon cannot generate invoices', 'select public.admin_generate_renewal_invoices()', 'permission denied');
+  perform t.as_user('admin');
+  r := public.admin_generate_renewal_invoices();
+  perform t.as_root();
+
+  perform t.check('generation reports what it made', (r->>'renewal_invoices_created')::int >= 2, r::text);
+  perform t.check('one USD and one ZWG draft for the client (grouped by currency)',
+    (select count(*) from public.invoices where client_id = t.id('cE')) = 2);
+  select id into v_inv from public.invoices where client_id = t.id('cE') and currency = 'USD';
+  perform t.check('USD invoice groups hosting + email on one invoice',
+    (select count(*) from public.invoice_items where invoice_id = v_inv) = 2);
+  perform t.check('USD invoice total = 12000 + 3000', (select total_cents from public.invoices where id = v_inv) = 15000);
+  perform t.check('generated invoice is a draft by default', (select status from public.invoices where id = v_inv) = 'draft');
+  perform t.check('due date is the earliest renewal date', (select due_date from public.invoices where id = v_inv) = current_date + 5);
+  perform t.check('line items point at their services',
+    (select count(*) from public.invoice_items where invoice_id = v_inv and service_id in (t.id('sHost'), t.id('sMail'))) = 2);
+  perform t.check('far-future, one-off, auto_invoice=false, cancelled and free services are skipped',
+    (select count(*) from public.invoice_items i join public.invoices v on v.id = i.invoice_id where v.client_id = t.id('cE')) = 3);
+  perform t.check('services record what they were invoiced for',
+    (select invoiced_for from public.services where id = t.id('sHost')) = current_date + 5);
+
+  -- idempotent
+  r := private.generate_renewal_invoices();
+  perform t.check('running again creates nothing for the same renewal',
+    (select count(*) from public.invoices where client_id = t.id('cE')) = 2, r::text);
+  r := public.run_daily_maintenance();
+  perform t.check('daily job also generates and still reports its own counters',
+    r ? 'renewal_invoices_created' and r ? 'invoices_marked_overdue');
+  perform t.check('daily job did not duplicate', (select count(*) from public.invoices where client_id = t.id('cE')) = 2);
+
+  -- paying renews the service, syncs hosting, and makes it eligible next cycle
+  update public.invoices set status = 'sent' where id = v_inv;
+  perform t.as_user('staff');
+  perform public.mark_invoice_paid(v_inv, 'cash', 'REN-1');
+  perform t.as_root();
+  perform t.check('paid invoice moved hosting service renewal a year on',
+    (select renewal_date from public.services where id = t.id('sHost')) between current_date + 365 and current_date + 372);
+  perform t.check('hosting account renewal date follows the service',
+    (select renewal_date from public.hosting_accounts where id = v_h) = (select renewal_date from public.services where id = t.id('sHost')));
+  perform t.check('hosting account date is now a year out',
+    (select renewal_date from public.hosting_accounts where id = v_h) > current_date + 300);
+  perform t.check('monthly email service moved a month on',
+    (select renewal_date from public.services where id = t.id('sMail')) between current_date + 37 and current_date + 42);
+  r := private.generate_renewal_invoices();
+  perform t.check('paid hosting is not invoiced again until its next window',
+    (select count(*) from public.invoice_items where service_id = t.id('sHost')) = 1);
+  perform t.check('monthly email renewed ~40 days out is outside the window, so no new line',
+    (select count(*) from public.invoice_items where service_id = t.id('sMail')) = 1);
+  -- next cycle: pull the monthly renewal inside the window
+  update public.services set renewal_date = current_date + 7 where id = t.id('sMail');
+  r := private.generate_renewal_invoices();
+  perform t.check('next cycle creates a fresh invoice line', (select count(*) from public.invoice_items where service_id = t.id('sMail')) = 2);
+
+  -- auto-send
+  update public.settings set value = 'true'::jsonb where key = 'billing.auto_send';
+  update public.services set renewal_date = current_date + 4 where id = t.id('sFar');
+  r := private.generate_renewal_invoices();
+  perform t.check('auto_send creates a sent invoice', (select status from public.invoices i join public.invoice_items it on it.invoice_id = i.id
+                                                       where it.service_id = t.id('sFar')) = 'sent', r::text);
+  perform t.check('auto-sent invoice has sent_at set',
+    (select sent_at is not null from public.invoices i join public.invoice_items it on it.invoice_id = i.id where it.service_id = t.id('sFar')));
+  update public.settings set value = 'false'::jsonb where key = 'billing.auto_send';
+
+  -- overdue invoices are not due in the past: renewal date already passed
+  update public.services set renewal_date = current_date - 3, invoiced_for = null where id = t.id('sOff');
+  update public.services set auto_invoice = true where id = t.id('sOff');
+  r := private.generate_renewal_invoices();
+  perform t.check('a lapsed renewal is invoiced with a due date of today, not the past',
+    (select due_date from public.invoices i join public.invoice_items it on it.invoice_id = i.id where it.service_id = t.id('sOff')) = current_date);
+
+  -- mailbox limits (limit = 2)
+  insert into public.email_accounts (client_id, address, status, hosting_account_id) values (t.id('cE'), 'a@recurring.test', 'active', v_h);
+  insert into public.email_accounts (client_id, address, status, hosting_account_id) values (t.id('cE'), 'b@recurring.test', 'pending', v_h);
+  perform t.throws('third mailbox is refused at the limit',
+    format($q$insert into public.email_accounts (client_id, address, status, hosting_account_id) values (%L,'c@recurring.test','active',%L)$q$, t.id('cE'), v_h),
+    'Mailbox limit reached');
+  perform t.check('mailbox without a hosting link is not limited',
+    t.affected(format($q$insert into public.email_accounts (client_id, address, status) values (%L,'free@recurring.test','active')$q$, t.id('cE'))) = 1);
+  update public.email_accounts set status = 'deleted' where address = 'b@recurring.test';
+  perform t.check('deleting a mailbox frees a slot',
+    t.affected(format($q$insert into public.email_accounts (client_id, address, status, hosting_account_id) values (%L,'c@recurring.test','active',%L)$q$, t.id('cE'), v_h)) = 1);
+  perform t.throws('un-deleting into a full plan is refused',
+    $q$update public.email_accounts set status = 'active' where address = 'b@recurring.test'$q$, 'Mailbox limit reached');
+  perform t.throws('mailbox cannot use another client''s hosting plan',
+    format($q$insert into public.email_accounts (client_id, address, status, hosting_account_id) values (%L,'x@recurring.test','active',%L)$q$, t.id('cE'), t.id('hF')),
+    'different client');
+  update public.hosting_accounts set email_accounts_limit = null where id = v_h;
+  perform t.check('no limit set means unlimited',
+    t.affected(format($q$insert into public.email_accounts (client_id, address, status, hosting_account_id) values (%L,'d@recurring.test','active',%L)$q$, t.id('cE'), v_h)) = 1);
+
+  -- clients still cannot use any of this
+  perform t.as_user('ua');
+  perform t.check('clients cannot change billing settings', t.affected($q$update public.settings set value = '99'::jsonb where key = 'billing.invoice_lead_days'$q$) = 0);
   perform t.as_root();
 end $$;
 

@@ -19,7 +19,7 @@ export async function lookup(key) {
   if (cache.has(key)) return cache.get(key);
   const defs = {
     clients: () => db.from("clients").select("id,company_name,email,status").order("company_name"),
-    hosting: () => db.from("hosting_accounts").select("id,plan_name,client_id").order("created_at", { ascending: false }),
+    hosting: () => db.from("hosting_accounts").select("id,plan_name,client_id,email_accounts_limit").order("created_at", { ascending: false }),
     domains: () => db.from("domains").select("id,name,client_id").order("name"),
     staff: () => db.from("profiles").select("id,full_name,email,role").in("role", ["staff", "admin"]).eq("is_active", true).order("full_name"),
     servers: () => db.from("servers").select("id,name").order("name"),
@@ -57,7 +57,7 @@ export function toForm(f, row) {
   const v = row?.[f.name];
   if (f.type === "money") return v == null ? "" : (Number(v) / 100).toFixed(2);
   if (f.type === "array") return Array.isArray(v) ? v.join(", ") : "";
-  if (f.type === "checkbox") return !!v;
+  if (f.type === "checkbox") return v == null ? !!f.default : !!v;
   if (f.type === "mb") return v == null ? "" : (Number(v) / 1024).toFixed(2).replace(/\.00$/, "");
   return v ?? (f.default ?? "");
 }
@@ -117,10 +117,10 @@ export function formDialog({ title, fields, row = null, submitText = "Save", onS
  * cols: [{ label, cell(row), hideM, num }]. Returns { html, mount }.
  */
 const csvCell = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
-export function listPage({ csvName: cn, title, sub, rows, cols, searchText, statuses, statusOf, onOpen, addLabel, onAdd, emptyIcon = "inbox", emptyText = "Nothing here yet." }) {
+export function listPage({ csvName: cn, title, sub, rows, cols, searchText, statuses, statusOf, onOpen, addLabel, onAdd, headExtra = [], emptyIcon = "inbox", emptyText = "Nothing here yet." }) {
   const csvName = cn ?? title.toLowerCase().replace(/\W+/g, "-");
   const head = html`<div class="page-head"><div><h1>${title}</h1>${sub ? html`<p>${sub}</p>` : ""}</div>
-    <div class="row">${csvName ? html`<button class="btn btn-ghost" data-csv type="button">${icon("download")}Export CSV</button>` : ""}${onAdd ? html`<button class="btn btn-primary" data-add type="button">${icon("plus")}${addLabel || "Add"}</button>` : ""}</div></div>
+    <div class="row">${headExtra.map((x, i) => html`<button class="btn btn-ghost" data-extra="${i}" type="button">${x.label}</button>`)}${csvName ? html`<button class="btn btn-ghost" data-csv type="button">${icon("download")}Export CSV</button>` : ""}${onAdd ? html`<button class="btn btn-primary" data-add type="button">${icon("plus")}${addLabel || "Add"}</button>` : ""}</div></div>
     <div class="toolbar"><input class="input" type="search" data-search placeholder="Search…" aria-label="Search ${title}" autocomplete="off">
     ${statuses ? html`<div class="tabs" role="group" aria-label="Filter by status">${["all", ...statuses].map((s) => html`<button class="tab" type="button" data-st="${s}" aria-pressed="${s === "all"}">${s === "all" ? "All" : s.replace(/_/g, " ")}</button>`)}</div>` : ""}</div>
     <div class="card tcard" data-table></div>`;
@@ -150,6 +150,7 @@ export function listPage({ csvName: cn, title, sub, rows, cols, searchText, stat
     $("[data-table]", view).addEventListener("click", open);
     $("[data-table]", view).addEventListener("keydown", (e) => { if (e.key === "Enter" && e.target.matches("tr[data-id]")) open(e); });
     const add = $("[data-add]", view); if (add) add.addEventListener("click", onAdd);
+    $$("[data-extra]", view).forEach((b) => b.addEventListener("click", () => headExtra[+b.dataset.extra].onClick()));
   };
   return { html: head, mount };
 }

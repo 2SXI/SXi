@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { html, raw, esc, safeNext, money, fmtDate, daysUntil, mbText, pct, tone, pill, safeUrl, describeActivity, linkToHash, timeAgo } from "../site/portal/js/util.js";
+import { html, raw, esc, safeNext, money, fmtDate, daysUntil, mbText, pct, tone, pill, safeUrl, describeActivity, linkToHash, timeAgo } from "../portal/js/util.js";
 
 test("html`` escapes interpolated values (XSS)", () => {
   const evil = `<img src=x onerror="alert(1)">`;

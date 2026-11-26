@@ -127,6 +127,17 @@ def run():
                 goto(page, "domains"); page.click("text=Add domain"); page.fill('[name=name]', "Bad Name.CO.ZW"); page.select_option('[name=client_id]', "c1"); page.fill('[name=nameservers]', "NS1.x.com, ns2.x.com"); page.click("dialog [type=submit]")
                 wait_for(page, lambda: any(c[:2] == ("insert", "domains") for c in mock.calls)); d = [c for c in mock.calls if c[:2] == ("insert", "domains")][-1][2]
                 check("domain names and nameservers are lowercased", d["name"] == "bad name.co.zw".replace(" ", "") or d["name"] == "badname.co.zw" or d["name"] == "bad name.co.zw", str(d)); check("nameservers parsed", d["nameservers"] == ["ns1.x.com", "ns2.x.com"], str(d))
+                goto(page, "invoices"); page.click("[data-extra='0']"); page.wait_for_selector("dialog [name=lead]")
+                check("renewal-invoices dialog has lead days, auto-send and generate-now", page.query_selector("dialog [name=send]") is not None and page.query_selector("dialog [name=now]") is not None and page.input_value("dialog [name=lead]") == "14")
+                check("generate-now is ticked by default and auto-send is off", page.is_checked("dialog [name=now]") and not page.is_checked("dialog [name=send]"))
+                page.click("dialog [data-close]")
+                goto(page, "services"); page.click("text=Add service")
+                check("new service defaults to automatic renewal invoices", page.is_checked("dialog [name=auto_invoice]"))
+                check("service form can link a hosting account", page.query_selector("dialog [name=hosting_account_id]") is not None)
+                page.click("dialog [data-close]")
+                goto(page, "email"); page.click("text=Add email")
+                check("mailbox form can pick a hosting plan", page.query_selector("dialog [name=hosting_account_id]") is not None)
+                page.click("dialog [data-close]")
                 page.screenshot(path="/tmp/admin-desktop.png")
             else:
                 goto(page, "overview"); page.screenshot(path="/tmp/admin-phone.png"); goto(page, "invoices"); page.screenshot(path="/tmp/admin-phone-invoices.png")

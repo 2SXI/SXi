@@ -3,7 +3,7 @@ import json, re, threading, time, http.server, socketserver, functools, copy
 from urllib.parse import urlparse, parse_qsl
 
 import os
-SITE = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "site"))
+SITE = os.path.abspath(os.path.join(os.path.dirname(__file__), "..")) 
 CSP = ("default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; "
        "img-src 'self' data:; connect-src 'self' https://*.supabase.co; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'")
 PORTAL = ("/login.html", "/reset-password.html", "/dashboard", "/admin")
