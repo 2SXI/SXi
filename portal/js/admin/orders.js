@@ -17,7 +17,7 @@ export async function orders(ctx) {
     onOpen: (r) => openOrder(ctx, r, clients), emptyIcon: "inbox", emptyText: "No orders yet.",
     statuses: ["new", "approved", "rejected"], statusOf: (r) => r.status,
     searchText: (r) => `${r.contact_name} ${r.company_name || ""} ${r.email} ${r.domain || ""} ${plansText(r)}`,
-    cols: [{ label: "Order", cell: (r) => html`<strong>${r.company_name || r.contact_name}</strong><div class="meta">${r.contact_name} · ${r.email}</div>` },
+    cols: [{ label: "Order", cell: (r) => html`<strong>${r.company_name || r.contact_name}</strong><div class="meta">${r.contact_name} · ${r.email}${r.source === "signup" ? " · self-service" : ""}</div>` },
       { label: "Plans", cell: (r) => plansText(r), hideM: true }, { label: "Received", cell: (r) => timeAgo(r.created_at), hideM: true },
       { label: "Status", cell: (r) => pillO(r.status) }],
   });

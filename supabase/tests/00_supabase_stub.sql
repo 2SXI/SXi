@@ -8,6 +8,7 @@ create schema auth;
 create table auth.users (
   id uuid primary key default gen_random_uuid(),
   email text,
+  email_confirmed_at timestamptz,
   raw_user_meta_data jsonb default '{}'::jsonb
 );
 -- Same behaviour as Supabase's auth.uid(): read the JWT subject from the request settings.

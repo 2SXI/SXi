@@ -21,6 +21,14 @@ async function boot() {
   let client;
   try { client = await q(db.from("clients").select("id,company_name,contact_name,email,phone,address,status").maybeSingle()); }
   catch (e) { return fatal("We couldn't load your account.", friendly(e)); }
+  // A visitor who created their account from the website order page has no client yet. Claim their order now:
+  // the database checks the email is confirmed, then creates their client, services and first invoice.
+  if (!client && profile.role === "client") {
+    try {
+      const r = await q(db.rpc("claim_signup_order"));
+      if (r && r.status === "created") { history.replaceState(null, "", "/dashboard/#/invoices/" + r.invoice_id); return location.reload(); }
+    } catch { /* fall through to the "being set up" screen */ }
+  }
   ctx.profile = profile; ctx.client = client;
 
   if (!client) {   // login exists but isn't linked to a company yet

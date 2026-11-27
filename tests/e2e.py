@@ -198,7 +198,15 @@ with sync_playwright() as p:
     check("H2 deactivated users are sent to login", "login.html" in pg.url); ctx.close()
     mock = Mock(); mock.db["clients"] = []; ctx = new_context(browser, mock); pg = ctx.new_page()
     pg.goto(f"{BASE}/dashboard/"); pg.wait_for_selector("h1")
-    check("H3 unlinked login sees a friendly set-up screen", "being set up" in pg.inner_text("body")); ctx.close()
+    check("H3 unlinked login sees a friendly set-up screen", "being set up" in pg.inner_text("body") and any(c[:2] == ("rpc", "claim_signup_order") for c in mock.calls)); ctx.close()
+    mock = Mock(); mock.claim_clients = mock.db["clients"]; mock.db["clients"] = []; mock.claim_result = dict(status="created", client_id="c1", invoice_id="inv1")
+    ctx = new_context(browser, mock); pg = ctx.new_page(); pg.goto(f"{BASE}/dashboard/")
+    pg.wait_for_url(re.compile(r"#/invoices/inv1"), timeout=8000); pg.wait_for_selector(".sidebar")
+    check("H4 a new self-serve account claims its order on first sign-in and lands on its invoices", "#/invoices/inv1" in pg.url and "being set up" not in pg.inner_text("body") and sum(1 for c in mock.calls if c[:2] == ("rpc", "claim_signup_order")) == 1); ctx.close()
+    mock = Mock(); ctx = new_context(browser, mock); pg = ctx.new_page(); pg.goto(f"{BASE}/dashboard/"); pg.wait_for_selector(".sidebar")
+    check("H5 an already-linked client never calls the claim function", not any(c[:2] == ("rpc", "claim_signup_order") for c in mock.calls)); ctx.close()
+    mock = Mock(); mock.authed = False; ctx = new_context(browser, mock, authed=False); pg = ctx.new_page(); pg.goto(f"{BASE}/login.html?confirmed=1"); pg.wait_for_selector("#msg .alert")
+    check("H6 the email-confirmation link lands on login with a confirmation message", "confirmed" in pg.inner_text("#msg").lower()); ctx.close()
 
     # ---------- empty / error states ----------
     mock = Mock()

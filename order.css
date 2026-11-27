@@ -11,3 +11,6 @@
 .order-done[hidden], .order-error[hidden] { display: none; }
 .order-done .btn { margin-top: 8px; }
 #orderForm[hidden], .contact-info[hidden], .order-done[hidden], .order-error[hidden] { display: none !important; }
+.linklike { background: none; border: 0; padding: 0; font: inherit; color: var(--text-dim, #9aa3b2); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.linklike:hover { color: var(--text, #fff); }
+.field[hidden] { display: none !important; }

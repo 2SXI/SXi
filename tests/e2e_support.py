@@ -119,6 +119,9 @@ class Mock:
         if path == "/auth/v1/user" and m == "PUT": return send(200, self.user())
         if path.startswith("/rest/v1/rpc/"):
             fn = path.rsplit("/", 1)[1]; body = json.loads(request.post_data or "{}"); self.calls.append(("rpc", fn, body))
+            if fn == "claim_signup_order":
+                if getattr(self, "claim_result", None): self.db["clients"] = self.claim_clients; return send(200, self.claim_result)
+                return send(200, dict(status="none"))
             if fn == "set_domain_auto_renew":
                 for d in self.db["domains"]:
                     if d["id"] == body["p_domain_id"]: d["auto_renew"] = body["p_enabled"]

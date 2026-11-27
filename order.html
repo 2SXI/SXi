@@ -110,7 +110,7 @@
 </nav>
 <div class="page-header wrap">
   <h1>Get started with hosting &amp; email</h1>
-  <p>Tell us what you need. We confirm your details, send your invoice, and you pay securely online. Nothing is charged on this page.</p>
+  <p>Choose your plan and create your account. You will see your invoice straight away and pay securely online. Nothing is charged on this page.</p>
 </div>
 <section id="order">
   <div class="wrap contact-grid">
@@ -118,9 +118,9 @@
       <span class="section-tag">How it works</span>
       <h2>Three simple steps.</h2>
       <ol class="order-steps">
-        <li><b>Send this form.</b> Choose your plan and tell us about your business.</li>
-        <li><b>We confirm.</b> We check the details and send your invoice and portal login, usually within one business day.</li>
-        <li><b>Pay online.</b> Sign in to the client portal and pay by card or mobile money through Linkwa.</li>
+        <li><b>Create your account.</b> Choose your plan, then set a password.</li>
+        <li><b>Confirm your email.</b> We send you a link. Click it, then sign in.</li>
+        <li><b>Pay online.</b> Your invoice is waiting in the client portal. Pay with Linkwa, and your service starts.</li>
       </ol>
       <div class="order-summary" id="summary" aria-live="polite"></div>
       <a class="btn btn-ghost whatsapp-btn" href="https://wa.me/263781053299?text=Hi%20SXI%20Digital%2C%20I%20have%20a%20question%20before%20I%20order." target="_blank" rel="noopener">Prefer WhatsApp? Message us</a>
@@ -168,22 +168,39 @@
         <label for="f-domain">Your website address (if you have one)</label>
         <input id="f-domain" name="domain" type="text" maxlength="253" placeholder="yourbusiness.co.zw">
       </div>
-      <div class="field full">
+      <div class="field" data-mode="account">
+        <label for="f-pass">Password</label>
+        <input id="f-pass" name="password" type="password" autocomplete="new-password" minlength="10" maxlength="72" placeholder="At least 10 characters">
+      </div>
+      <div class="field" data-mode="account">
+        <label for="f-pass2">Repeat password</label>
+        <input id="f-pass2" name="password2" type="password" autocomplete="new-password" maxlength="72">
+      </div>
+      <div class="field full" data-mode="request" hidden>
         <label for="f-notes">Anything we should know?</label>
         <textarea id="f-notes" name="notes" maxlength="2000" placeholder="Optional"></textarea>
       </div>
       <div class="field full form-submit">
         <div id="orderError" class="order-error" role="alert" hidden></div>
-        <button type="submit" class="btn btn-primary" id="orderBtn">Send my order <span class="btn-arrow">→</span></button>
-        <p class="form-note">No payment is taken here. You pay after we send your invoice.</p>
+        <button type="submit" class="btn btn-primary" id="orderBtn">Create my account <span class="btn-arrow">→</span></button>
+        <p class="form-note">No payment is taken here. Already have an account? <a href="login.html">Sign in</a>.</p>
+        <p class="form-note"><button type="button" class="linklike" id="modeBtn">Prefer us to set it up for you? Send a request instead.</button></p>
       </div>
     </form>
 
     <div class="order-done" id="orderDone" hidden>
-      <h2>Thank you, we have your order.</h2>
-      <p>Your reference is <strong id="orderRef"></strong>. We will confirm your details and email you your invoice and portal login, usually within one business day.</p>
-      <p>Want to speed things up? Message us on WhatsApp and quote your reference.</p>
-      <a class="btn btn-primary" id="orderWa" href="https://wa.me/263781053299" target="_blank" rel="noopener">Message us on WhatsApp</a>
+      <div id="doneAccount" hidden>
+        <h2>Check your email.</h2>
+        <p>We sent a confirmation link to <strong id="doneEmail"></strong>. Click it, then sign in with the password you just chose. Your invoice will be waiting for you.</p>
+        <p class="form-note">Nothing in your inbox after a few minutes? Check your spam folder, or message us on WhatsApp.</p>
+        <a class="btn btn-primary" href="login.html">Go to sign in</a>
+      </div>
+      <div id="doneRequest" hidden>
+        <h2>Thank you, we have your request.</h2>
+        <p>Your reference is <strong id="orderRef"></strong>. We will confirm your details and email you your invoice and portal login, usually within one business day.</p>
+        <p>Want to speed things up? Message us on WhatsApp and quote your reference.</p>
+        <a class="btn btn-primary" id="orderWa" href="https://wa.me/263781053299" target="_blank" rel="noopener">Message us on WhatsApp</a>
+      </div>
     </div>
   </div>
 </section>

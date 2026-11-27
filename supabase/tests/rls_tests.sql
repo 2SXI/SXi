@@ -846,6 +846,87 @@ begin
 end $$;
 
 -- ---------------------------------------------------------------------
+-- 0008: self-serve sign-up
+-- ---------------------------------------------------------------------
+do $$
+declare r jsonb; v_n int; v_c uuid; v_i uuid; v_before int;
+begin
+  perform t.as_root();
+  insert into public.clients (id, company_name, email, status) values (t.mk('cExist'), 'Existing Co', 'owner@existing.test', 'active');
+  insert into public.invoices (client_id, currency, due_date) values (t.id('cExist'), 'USD', current_date + 3);
+  insert into auth.users (id, email, email_confirmed_at, raw_user_meta_data) values
+    (t.mk('s1'), 'New.Person@Shop.test', now(), jsonb_build_object('full_name','New Person','business','Shop & Co','phone','+263771','domain','Shop.CO.ZW',
+        'order_plans', jsonb_build_array('hosting-monthly','email-business-yearly'), 'role','admin','client_id', t.id('cExist'), 'price_cents', 1)),
+    (t.mk('s2'), 'unconfirmed@shop.test', null, jsonb_build_object('order_plans', jsonb_build_array('hosting-monthly'))),
+    (t.mk('s3'), 'badplan@shop.test', now(), jsonb_build_object('order_plans', jsonb_build_array('hosting-free'))),
+    (t.mk('s4'), 'twohost@shop.test', now(), jsonb_build_object('order_plans', jsonb_build_array('hosting-monthly','hosting-yearly'))),
+    (t.mk('s5'), 'noplan@shop.test', now(), '{}'::jsonb),
+    (t.mk('s6'), 'owner@existing.test', now(), jsonb_build_object('full_name','Impostor','order_plans', jsonb_build_array('hosting-yearly'))),
+    (t.mk('s7'), 'weird@shop.test', now(), jsonb_build_object('order_plans', '"hosting-monthly"'::jsonb)),
+    (t.mk('s8'), 'nonstring@shop.test', now(), jsonb_build_object('order_plans', jsonb_build_array(5)));
+  select count(*) into v_before from public.clients;
+
+  perform t.as_anon();
+  perform t.throws('anon cannot claim', 'select public.claim_signup_order()', 'permission denied');
+
+  -- nothing is created for unconfirmed or invalid sign-ups
+  perform t.as_user('s2'); r := public.claim_signup_order();
+  perform t.check('unconfirmed email creates nothing', r->>'status' = 'none');
+  perform t.as_user('s3'); perform t.check('unknown plan creates nothing', public.claim_signup_order()->>'status' = 'none');
+  perform t.as_user('s4'); perform t.check('two plans of one kind create nothing', public.claim_signup_order()->>'status' = 'none');
+  perform t.as_user('s5'); perform t.check('no plan creates nothing', public.claim_signup_order()->>'status' = 'none');
+  perform t.as_user('s7'); perform t.check('plans that are not an array create nothing', public.claim_signup_order()->>'status' = 'none');
+  perform t.as_user('s8'); perform t.check('non-string plans create nothing', public.claim_signup_order()->>'status' = 'none');
+  perform t.as_root();
+  perform t.check('no client was created by any of those', (select count(*) from public.clients) = v_before);
+
+  -- the happy path
+  perform t.as_user('s1'); r := public.claim_signup_order(); perform t.as_root();
+  v_c := (r->>'client_id')::uuid; v_i := (r->>'invoice_id')::uuid;
+  perform t.check('confirmed sign-up creates a client and invoice', r->>'status' = 'created' and v_c is not null and v_i is not null, r::text);
+  perform t.check('profile is linked to the new client and stays a client',
+    (select client_id = v_c and role = 'client' from public.profiles where id = t.id('s1')));
+  perform t.check('client details come from the sign-up',
+    (select company_name = 'Shop & Co' and contact_name = 'New Person' and email = 'new.person@shop.test' and phone = '+263771' from public.clients where id = v_c));
+  perform t.check('invoice is sent, USD, total 8000 + 1500 from the catalogue (metadata price ignored)',
+    (select status = 'sent' and total_cents = 9500 and currency = 'USD' from public.invoices where id = v_i));
+  perform t.check('two pending services were created', (select count(*) from public.services where client_id = v_c and status = 'pending') = 2);
+  perform t.check('an order record is kept for staff (source signup, approved, domain normalised)',
+    (select status = 'approved' and source = 'signup' and domain = 'shop.co.zw' and client_id = v_c and invoice_id = v_i from public.orders where client_id = v_c));
+  perform t.check('the daily job does not invoice the first period again',
+    (select (private.generate_renewal_invoices()->>'renewal_invoices_created') is not null) and (select count(*) from public.invoices where client_id = v_c) = 1);
+
+  -- the new client can see only their own things
+  perform t.as_user('s1');
+  perform t.check('new client can read their own invoice', t.n(format($q$select 1 from public.invoices where id = %L$q$, v_i)) = 1);
+  perform t.check('new client cannot see other clients invoices', t.n(format($q$select 1 from public.invoices where client_id = %L$q$, t.id('cExist'))) = 0);
+  perform t.check('new client cannot read orders', t.n('select 1 from public.orders') = 0);
+  -- idempotent
+  r := public.claim_signup_order(); perform t.as_root();
+  perform t.check('claiming twice does nothing', r->>'status' = 'none' and (select count(*) from public.invoices where client_id = v_c) = 1
+    and (select count(*) from public.orders where source = 'signup' and email = 'new.person@shop.test') = 1);
+
+  -- pay it: activates services
+  perform t.as_user('staff'); perform public.mark_invoice_paid(v_i, 'cash', 'SELF-1'); perform t.as_root();
+  perform t.check('paying activates the self-serve services', (select count(*) from public.services where client_id = v_c and status = 'active') = 2);
+
+  -- same email as an existing client: gets its own new client, existing client untouched, flagged for staff
+  perform t.as_user('s6'); r := public.claim_signup_order(); perform t.as_root();
+  perform t.check('a sign-up matching an existing client email gets a NEW client',
+    r->>'status' = 'created' and (r->>'client_id')::uuid <> t.id('cExist') and (r->>'duplicate_email')::boolean);
+  perform t.check('the existing client is untouched and not linked to the new login',
+    (select client_id from public.profiles where id = t.id('s6')) <> t.id('cExist')
+    and (select count(*) from public.invoices where client_id = t.id('cExist')) = 1
+    and (select count(*) from public.profiles where client_id = t.id('cExist')) = 0);
+  perform t.check('staff are told to check for a duplicate', (select notes ilike '%existing client%' from public.orders where client_id = (r->>'client_id')::uuid));
+
+  -- staff, already-linked and inactive users cannot claim
+  insert into auth.users (id, email, email_confirmed_at, raw_user_meta_data) values (t.mk('s9'), 'staffer@x.test', now(), jsonb_build_object('order_plans', jsonb_build_array('hosting-monthly')));
+  update public.profiles set role = 'staff' where id = t.id('s9');
+  perform t.as_user('s9'); perform t.check('staff cannot claim', public.claim_signup_order()->>'status' = 'none'); perform t.as_root();
+end $$;
+
+-- ---------------------------------------------------------------------
 -- Result
 -- ---------------------------------------------------------------------
 select case when ok then 'PASS' else 'FAIL' end as result, name, coalesce(detail, '') as detail

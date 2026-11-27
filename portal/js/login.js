@@ -9,6 +9,7 @@ const params = new URLSearchParams(location.search);
 let failures = 0;
 
 if (!configured) show("The portal isn't connected to its database yet (portal/js/config.js).", "warn");
+else if (params.get("confirmed")) show("Your email is confirmed. Sign in to see your invoice and pay.", "ok");
 
 // Already signed in? Skip the form.
 (async () => {
