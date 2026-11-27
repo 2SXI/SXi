@@ -753,6 +753,99 @@ begin
 end $$;
 
 -- ---------------------------------------------------------------------
+-- 0007: public orders
+-- ---------------------------------------------------------------------
+do $$
+declare r jsonb; v_o uuid; v_o2 uuid; v_o3 uuid; v_c uuid; v_i uuid; v_n int;
+begin
+  perform t.as_root();
+  perform t.as_anon();
+  r := public.submit_order('Tendai Moyo', 'Moyo Traders', 'Tendai@Moyo.test', '+263771111111', 'Moyo.CO.ZW', array['hosting-monthly','email-starter-yearly'], 'Please start soon');
+  perform t.check('anon can submit an order', (r->>'ok')::boolean and length(r->>'reference') = 8, r::text);
+  perform t.throws('anon cannot read orders', 'select count(*) from public.orders', 'permission denied');
+  perform t.throws('anon cannot insert orders directly', $q$insert into public.orders (contact_name, email, plans) values ('x','x@x.test','{hosting-monthly}')$q$, 'permission denied');
+  perform t.throws('anon cannot approve', format($q$select public.staff_approve_order(%L)$q$, gen_random_uuid()), 'permission denied');
+  perform t.throws('empty name is refused', $q$select public.submit_order('', 'c', 'a@b.test', null, null, array['hosting-monthly'], null)$q$, 'name');
+  perform t.throws('bad email is refused', $q$select public.submit_order('N', 'c', 'not-an-email', null, null, array['hosting-monthly'], null)$q$, 'email');
+  perform t.throws('unknown plan is refused', $q$select public.submit_order('N', 'c', 'a@b.test', null, null, array['hosting-free'], null)$q$, 'Unknown plan');
+  perform t.throws('no plan is refused', $q$select public.submit_order('N', 'c', 'a@b.test', null, null, array[]::text[], null)$q$, 'choose a plan');
+  perform t.throws('two hosting plans are refused', $q$select public.submit_order('N', 'c', 'a@b.test', null, null, array['hosting-monthly','hosting-yearly'], null)$q$, 'one hosting plan');
+  perform t.throws('oversized notes are refused', format($q$select public.submit_order('N','c','a@b.test',null,null,array['hosting-monthly'],%L)$q$, repeat('x', 2001)), 'too long');
+  perform t.as_root();
+  perform t.check('refused submissions stored nothing', (select count(*) from public.orders) = 1);
+  perform t.check('email is lowercased and domain normalised',
+    (select email = 'tendai@moyo.test' and domain = 'moyo.co.zw' from public.orders));
+  select id into v_o from public.orders;
+
+  -- rate limit: 3 per email per hour
+  perform t.as_anon();
+  perform public.submit_order('N', 'c', 'spam@x.test', null, null, array['hosting-monthly'], null);
+  perform public.submit_order('N', 'c', 'spam@x.test', null, null, array['hosting-monthly'], null);
+  perform public.submit_order('N', 'c', 'spam@x.test', null, null, array['hosting-monthly'], null);
+  perform t.throws('4th order from one email in an hour is refused', $q$select public.submit_order('N','c','spam@x.test',null,null,array['hosting-monthly'],null)$q$, 'Too many');
+
+  -- who can see / act
+  perform t.as_user('ua');
+  perform t.check('clients cannot read orders', t.n('select 1 from public.orders') = 0);
+  perform t.throws('clients cannot approve orders', format($q$select public.staff_approve_order(%L)$q$, v_o), 'Not allowed');
+  perform t.throws('clients cannot reject orders', format($q$select public.staff_reject_order(%L)$q$, v_o), 'Not allowed');
+  perform t.as_user('staff');
+  perform t.check('staff can read orders', t.n('select 1 from public.orders') = 4);
+  r := public.staff_approve_order(v_o);
+  v_c := (r->>'client_id')::uuid; v_i := (r->>'invoice_id')::uuid;
+  perform t.as_root();
+
+  perform t.check('approval creates a client from the order',
+    (select company_name = 'Moyo Traders' and email = 'tendai@moyo.test' and contact_name = 'Tendai Moyo' from public.clients where id = v_c));
+  perform t.check('two pending services created at catalogue prices',
+    (select count(*) from public.services where client_id = v_c and status = 'pending') = 2
+    and (select price_cents from public.services where client_id = v_c and type = 'hosting') = 1500
+    and (select price_cents from public.services where client_id = v_c and type = 'business_email') = 5000);
+  perform t.check('invoice is sent, USD, total 6500, one line per service',
+    (select status = 'sent' and currency = 'USD' and total_cents = 6500 from public.invoices where id = v_i)
+    and (select count(*) from public.invoice_items where invoice_id = v_i and service_id is not null) = 2);
+  perform t.check('order is marked approved and linked', (select status = 'approved' and client_id = v_c and invoice_id = v_i from public.orders where id = v_o));
+  perform t.check('the first period is not invoiced a second time by the daily job',
+    (select (private.generate_renewal_invoices()->>'renewal_invoices_created') is not null)
+    and (select count(*) from public.invoices where client_id = v_c) = 1);
+  perform t.as_user('staff');
+  perform t.throws('an order cannot be approved twice', format($q$select public.staff_approve_order(%L)$q$, v_o), 'already approved');
+  perform t.throws('an approved order cannot be rejected', format($q$select public.staff_reject_order(%L)$q$, v_o), 'already handled');
+  perform t.as_root();
+
+  -- paying activates the services and starts their renewal clock
+  perform t.as_user('staff');
+  perform public.mark_invoice_paid(v_i, 'cash', 'ORD-1');
+  perform t.as_root();
+  perform t.check('paying the order invoice activates both services',
+    (select count(*) from public.services where client_id = v_c and status = 'active') = 2);
+  perform t.check('hosting renews a month out, email a year out',
+    (select renewal_date from public.services where client_id = v_c and type = 'hosting') between current_date + 27 and current_date + 32
+    and (select renewal_date from public.services where client_id = v_c and type = 'business_email') between current_date + 364 and current_date + 367);
+
+  -- attach to an existing client; reject
+  select id into v_o2 from public.orders where email = 'spam@x.test' order by created_at limit 1;
+  select id into v_o3 from public.orders where email = 'spam@x.test' and id <> v_o2 order by created_at limit 1;
+  perform t.as_user('staff');
+  r := public.staff_approve_order(v_o2, t.id('cA'));
+  perform t.as_root();
+  perform t.check('approval can attach the order to an existing client',
+    (select client_id from public.invoices where id = (r->>'invoice_id')::uuid) = t.id('cA')
+    and (select count(*) from public.clients where email = 'spam@x.test') = 0);
+  perform t.as_user('staff');
+  perform t.throws('unknown existing client is refused', format($q$select public.staff_approve_order(%L, %L)$q$, v_o3, gen_random_uuid()), 'Client not found');
+  perform public.staff_reject_order(v_o3);
+  perform t.as_root();
+  perform t.check('rejecting marks the order rejected and creates nothing',
+    (select status from public.orders where id = v_o3) = 'rejected' and (select invoice_id from public.orders where id = v_o3) is null);
+  perform t.as_user('staff');
+  perform t.check('staff cannot delete orders', t.affected($q$delete from public.orders$q$) = 0);
+  perform t.as_user('admin');
+  perform t.check('admin can delete orders', t.affected(format($q$delete from public.orders where id = %L$q$, v_o3)) = 1);
+  perform t.as_root();
+end $$;
+
+-- ---------------------------------------------------------------------
 -- Result
 -- ---------------------------------------------------------------------
 select case when ok then 'PASS' else 'FAIL' end as result, name, coalesce(detail, '') as detail

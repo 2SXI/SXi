@@ -929,3 +929,7 @@ footer{position:relative; z-index:1;}
   }
   @media (max-width:900px){ .plans-features ul{ grid-template-columns:repeat(2, minmax(0,1fr)); } }
   @media (max-width:520px){ .plans-features ul{ grid-template-columns:1fr; } }
+
+/* secondary "ask on WhatsApp" link beside a plan button */
+.plan-alt{ display:inline-block; margin-left:12px; font-size:13.5px; color:var(--text-dim); text-decoration:underline; text-underline-offset:3px; }
+.plan-alt:hover{ color:var(--text); }

@@ -57,6 +57,8 @@ class AdminMock(Mock):
         d["payments"][0].update(client_id="c1"); d["servers"] = [dict(id="sv1", name="sxi-vps-01", ip_address="203.0.113.10", provider="cloudpanel", status="active", created_at=iso(-9))]
         d["settings"] = [dict(key="company.name", value="SXI Digital", updated_at=iso(-3))]; d["internal_notes"] = []
         d["support_tickets"][0].update(priority="normal")
+        d["orders"] = [dict(id="o1", status="new", contact_name="Tendai Moyo", company_name="Moyo Traders", email="tendai@moyo.test", phone="+263771111111", domain="moyo.co.zw", plans=["hosting-monthly", "email-starter-yearly"], notes="<img src=x onerror=alert(1)>", client_id=None, invoice_id=None, created_at=iso(-1)),
+                       dict(id="o2", status="approved", contact_name="Old Order", company_name=None, email="old@x.test", phone=None, domain=None, plans=["hosting-yearly"], notes=None, client_id="c1", invoice_id=None, created_at=iso(-9))]
         for m in d["support_messages"]: m["ticket_id"] = "t1"
     def user(self): return dict(id="u1", aud="authenticated", role="authenticated", email="boss@sxidigital.com", app_metadata={}, user_metadata={}, created_at=iso(-300))
     def handle(self, route, request):
@@ -66,6 +68,8 @@ class AdminMock(Mock):
         if m == "HEAD": return route.fulfill(status=200, headers=dict(cors, **{"content-range": "0-0/3"}))
         if "/rest/v1/rpc/" in path:
             fn = path.rsplit("/", 1)[1]; body = json.loads(request.post_data or "{}")
+            if fn in ("staff_approve_order", "staff_reject_order"):
+                self.calls.append(("rpc", fn, body)); return send(200, dict(client_id="c1", invoice_id="i1")) if fn == "staff_approve_order" else send(204)
             if fn in ("staff_link_user_by_email", "send_invoice", "mark_invoice_paid", "set_payment_status", "admin_update_profile"):
                 self.calls.append(("rpc", fn, body))
                 if fn == "send_invoice": [x.update(status="sent") for x in self.db["invoices"] if x["id"] == body["p_invoice_id"]]
@@ -137,6 +141,21 @@ def run():
                 page.click("dialog [data-close]")
                 goto(page, "email"); page.click("text=Add email")
                 check("mailbox form can pick a hosting plan", page.query_selector("dialog [name=hosting_account_id]") is not None)
+                page.click("dialog [data-close]")
+                goto(page, "orders")
+                check("orders list shows both orders", page.locator("tbody tr").count() == 2 if page.query_selector("tbody") else True)
+                page.click("text=Moyo Traders")
+                page.wait_for_selector("dialog .kv")
+                check("order dialog shows the details", "tendai@moyo.test" in page.inner_text("dialog") and "moyo.co.zw" in page.inner_text("dialog"))
+                check("order notes are escaped (no injected element)", page.locator("dialog img").count() == 0)
+                check("new order offers Reject and Approve", page.locator("dialog button:has-text('Reject')").count() == 1 and page.locator("dialog button:has-text('Approve')").count() == 1)
+                page.click("dialog button:has-text('Approve')")
+                page.wait_for_timeout(500)
+                ap = [c for c in mock.calls if c[0] == "rpc" and c[1] == "staff_approve_order"]
+                check("approve calls the database function with no existing client", len(ap) == 1 and ap[0][2]["p_order_id"] == "o1" and ap[0][2]["p_client_id"] is None)
+                check("approving takes you to the client to create their login", "/clients/c1" in page.url)
+                goto(page, "orders"); page.click("text=Old Order"); page.wait_for_selector("dialog .kv")
+                check("handled orders cannot be approved again", page.locator("dialog button:has-text('Approve')").count() == 0 and page.locator("dialog button:has-text('Reject')").count() == 0)
                 page.click("dialog [data-close]")
                 page.screenshot(path="/tmp/admin-desktop.png")
             else:

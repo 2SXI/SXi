@@ -30,7 +30,7 @@ The browser talks directly to Supabase, so **the database is the security bounda
 ## Setup
 
 1. **Supabase project.** Authentication → disable *Allow new users to sign up* (SXI creates client accounts). Set minimum password length to 10+. Under *URL Configuration* set the Site URL to your domain and add `https://YOURDOMAIN/reset-password.html` to the redirect URLs (needed for password-reset emails).
-2. **Database.** In the SQL editor run, in order: `supabase/migrations/0001_schema.sql`, `0002_security.sql`, `0003_client_helpers.sql`, `0004_admin_helpers.sql`, `0005_online_payments.sql`, `0006_recurring_billing.sql`. Optional: run `supabase/seed_demo.sql` for a demo client with sample data.
+2. **Database.** In the SQL editor run, in order: `supabase/migrations/0001_schema.sql`, `0002_security.sql`, `0003_client_helpers.sql`, `0004_admin_helpers.sql`, `0005_online_payments.sql`, `0006_recurring_billing.sql`, `0007_orders.sql`. Optional: run `supabase/seed_demo.sql` for a demo client with sample data.
 3. **Connect the site.** Edit `portal/js/config.js`: your project URL + anon key (Project Settings → API). Optionally set `WEBMAIL_URL`.
 4. **First admin.** Authentication → Add user, then in the SQL editor:
    ```sql
@@ -62,8 +62,9 @@ Glass-and-glow redesign across login, admin and client dashboard · **Ctrl/Cmd+K
 node --test tests/util.test.mjs                    # 10 unit tests (escaping, redirects, formatting)
 pip install playwright && playwright install chromium
 python3 tests/e2e.py                               # 97 client-dashboard browser checks against a mocked Supabase API
-python3 tests/e2e_admin.py                         # 57 admin browser checks (desktop + phone, actions, XSS)
-bash supabase/run_tests.sh                         # 238 database checks (needs local PostgreSQL)
+python3 tests/e2e_order.py                         # 31 checks on the public order form and the services-page links
+python3 tests/e2e_admin.py                         # 64 admin browser checks (desktop + phone, actions, XSS)
+bash supabase/run_tests.sh                         # 269 database checks (needs local PostgreSQL)
 (cd supabase/functions && deno test --allow-env _shared/linkwa_test.ts)   # 7 payment-adapter tests
 ```
 The browser tests use a *mock* of the Supabase API, so the first thing to verify after step 5 is a real sign-in against your project (and a real admin action, such as sending an invoice).
@@ -98,6 +99,17 @@ The return page works with or without Linkwa's `short_url` / `payment_reference`
 * **Hosting renewal dates stay in sync.** Link a hosting service to its hosting account (service form, *Linked hosting account*). The hosting account's renewal date is then copied from the service whenever it changes, so reminders use the date that was paid for.
 * **Mailbox limits.** Set *Mailbox limit* on a hosting account and choose that account in each mailbox's *Hosting plan*. Adding a mailbox past the limit is refused by the database (deleted mailboxes free a slot). Mailboxes without a hosting plan are not limited.
 * Settings live in the `settings` table: `billing.invoice_lead_days` (0-90) and `billing.auto_send` (true/false).
+
+## Online orders (migration 0007)
+The **Get started** buttons on `services.html` open `order.html` with the plan preselected. The flow:
+1. The visitor sends the form. This calls `submit_order()`, the only thing the public (anon) key can do. It validates every field, takes the price from the server-side catalogue (`private.plan_def`, never from the browser), and is rate limited (3 orders per email per hour, 200 per hour overall). No payment is taken.
+2. The order appears in **Admin → Orders** (status *New*). Check the details, then **Approve & send invoice**. Choose an existing client in the dialog if this person is already one of yours, otherwise leave it blank and a new client is created from the order.
+3. Approving creates the client, the services (status *pending*) and an invoice that is sent immediately (due in 7 days). You are taken to the client page: **create their login there** (same as for any client), and they set a password with *Forgot password*.
+4. The client signs in and presses **Pay online**. When the invoice is paid, the services become *active* and their renewal date moves one cycle on. From then on the renewal invoices of migration 0006 take over.
+* Rejecting an order creates nothing. Only an admin can delete orders.
+* **Changing a price or adding a plan:** edit `private.plan_def` in a new migration, the dropdowns in `order.html`, and `PRICES` in `order.js` (display only), and `PLANS` in `portal/js/admin/resources.js`. The server price list is the one that counts.
+* **There is no email notification for new orders yet.** Check Admin → Orders, or tell us if you want an email/WhatsApp alert added.
+* The domain a visitor types is kept on the order for you to read. It does not create a domain record automatically.
 
 ## Login service (admin-users)
 The admin screens' **Create client login**, **Add team member** and **password reset link** buttons call the `admin-users` Edge Function, because creating a login needs the service-role key (never in browser code). Deploy it with `supabase functions deploy admin-users` (or paste `paste-into-supabase/admin-users.ts` into the dashboard; keep *Verify JWT* **on**). It needs the secret `SITE_URL` and checks the caller is an active staff member or admin; only admins can create team logins. *Invite* emails use Supabase's mailer (set up custom SMTP under Authentication for anything beyond a few emails per hour); *temporary password* needs no email at all.

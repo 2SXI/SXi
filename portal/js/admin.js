@@ -4,7 +4,7 @@ import { newInvoice } from "./admin/billing.js";
 import { openPalette } from "./admin/palette.js";
 
 const NAV = [["overview", "Overview", "overview"], ["clients", "Clients", "clients"], ["services", "Services", "services"], ["websites", "Websites", "websites"], ["domains", "Domains", "domains"],
-  ["hosting", "Hosting", "hosting"], ["email", "Email", "email"], ["invoices", "Invoices", "invoices"], ["renewals", "Renewals", "renewals"], ["payments", "Payments", "payments"], ["support", "Support", "support"],
+  ["hosting", "Hosting", "hosting"], ["email", "Email", "email"], ["orders", "Orders", "inbox"], ["invoices", "Invoices", "invoices"], ["renewals", "Renewals", "renewals"], ["payments", "Payments", "payments"], ["support", "Support", "support"],
   ["servers", "Servers", "servers"], ["activity", "Activity", "activity"], ["team", "Team", "team"], ["settings", "Settings", "settings"]];
 const PRIMARY = ["overview", "clients", "invoices", "support"];
 const app = $("#app");
@@ -18,6 +18,7 @@ async function loadView(id, arg) {
     case "team": return (await import("./admin/misc.js")).team(ctx);
     case "settings": return (await import("./admin/misc.js")).settings(ctx);
     case "clients": return (await import("./admin/clients.js")).render(ctx, arg);
+    case "orders": return (await import("./admin/orders.js")).orders(ctx);
     case "invoices": return (await import("./admin/billing.js")).invoices(ctx, arg);
     case "servers": return (await import("./admin/servers.js")).servers(ctx, arg);
     case "renewals": return (await import("./admin/renewals.js")).renewals(ctx);
